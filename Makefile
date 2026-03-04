@@ -1,4 +1,4 @@
-.PHONY: up down build logs shell test migrate sync-now psql
+.PHONY: up down build logs shell test migrate sync-now psql demo demo-down demo-logs
 
 up:
 	docker compose up --build -d
@@ -29,3 +29,12 @@ psql:
 
 dev:
 	FLASK_ENV=development flask --app "app:create_app()" run --host 0.0.0.0 --port $${PORT:-8080} --debug
+
+demo:
+	docker compose -f docker-compose.demo.yml up --build -d
+
+demo-down:
+	docker compose -f docker-compose.demo.yml down
+
+demo-logs:
+	docker compose -f docker-compose.demo.yml logs -f web

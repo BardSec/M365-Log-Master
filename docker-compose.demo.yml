@@ -1,0 +1,18 @@
+version: "3.9"
+
+# Demo compose file – no database required, no Azure credentials needed.
+# Usage: docker compose -f docker-compose.demo.yml up --build
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    environment:
+      DEMO_MODE: "true"
+      SKIP_SCHEDULER: "1"
+      SECRET_KEY: "demo-secret-not-for-production"
+      PORT: "${PORT:-8080}"
