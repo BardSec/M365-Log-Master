@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – M365 Log Master{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-bar-chart-fill me-2 text-success"></i>Dashboard</h4>
+  <div class="d-flex gap-2">
+    {% for w, label in [('24h', 'Last 24 h'), ('7d', 'Last 7 d'), ('30d', 'Last 30 d')] %}
+      <a href="{{ url_for('pages.dashboard', window=w) }}"
+         class="btn btn-sm {{ 'btn-primary' if window == w else 'btn-outline-secondary' }}">
+        {{ label }}
+      </a>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- KPI cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="card text-center shadow-sm h-100 border-0">
+      <div class="card-body">
+        <div class="fs-2 fw-bold text-primary">{{ metrics.total | default(0) }}</div>
+        <div class="small text-muted">Total Sign-Ins</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center shadow-sm h-100 border-0">
+      <div class="card-body">
+        <div class="fs-2 fw-bold text-danger">{{ metrics.failures | default(0) }}</div>
+        <div class="small text-muted">Failed Sign-Ins</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center shadow-sm h-100 border-0">
+      <div class="card-body">
+        <div class="fs-2 fw-bold text-warning">{{ metrics.failure_rate | default(0) }}%</div>
+        <div class="small text-muted">Failure Rate</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center shadow-sm h-100 border-0">
+      <div class="card-body">
+        <div class="fs-2 fw-bold text-info">{{ anomalies | length }}</div>
+        <div class="small text-muted">Anomalies Detected</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Timeline chart -->
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-8">
+    <div class="card shadow-sm h-100 border-0">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-graph-up me-1 text-primary"></i>Sign-Ins Over Time
+      </div>
+      <div class="card-body">
+        <canvas id="timelineChart" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top users by failures -->
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm h-100 border-0">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-person-x me-1 text-danger"></i>Top Users by Failures
+      </div>
+      <div class="card-body p-0">
+        {% if metrics.top_users_by_failures %}
+        <ul class="list-group list-group-flush">
+          {% for u in metrics.top_users_by_failures %}
+          <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+            <span class="small text-truncate" style="max-width:220px"
+                  title="{{ u.user_principal_name }}">
+              {{ u.user_principal_name or '(unknown)' }}
+            </span>
+            <span class="badge bg-danger rounded-pill">{{ u.cnt }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <div class="p-3 text-muted small">No failures in window.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Top IPs by failures -->
+  <div class="col-12 col-md-6">
+    <div class="card shadow-sm h-100 border-0">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-geo-alt me-1 text-warning"></i>Top IPs by Failures
+      </div>
+      <div class="card-body p-0">
+        {% if metrics.top_ips_by_failures %}
+        <ul class="list-group list-group-flush">
+          {% for row in metrics.top_ips_by_failures %}
+          <li class="list-group-item d-flex justify-content-between align-items-center px-3 py-2">
+            <a href="{{ url_for('pages.search', ip=row.ip_address) }}" class="small font-monospace">
+              {{ row.ip_address or '(unknown)' }}
+            </a>
+            <span class="badge bg-warning text-dark rounded-pill">{{ row.cnt }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <div class="p-3 text-muted small">No failures in window.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Anomalies table -->
+  <div class="col-12 col-md-6">
+    <div class="card shadow-sm h-100 border-0">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between">
+        <span><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Recent Anomalies</span>
+        <span class="badge bg-danger">{{ anomalies | length }}</span>
+      </div>
+      <div class="card-body p-0" style="max-height:320px; overflow-y:auto;">
+        {% if anomalies %}
+        <ul class="list-group list-group-flush">
+          {% for a in anomalies[:20] %}
+          <li class="list-group-item px-3 py-2">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <span class="badge
+                  {% if a.reason == 'impossible_travel' %}bg-danger
+                  {% elif a.reason == 'repeated_ca_failure' %}bg-warning text-dark
+                  {% elif a.reason == 'unfamiliar_country' %}bg-info text-dark
+                  {% else %}bg-secondary{% endif %}
+                  me-1">{{ a.reason | replace('_', ' ') | title }}</span>
+                <a href="{{ url_for('pages.event_detail', event_id=a.id) }}"
+                   class="small text-truncate d-inline-block" style="max-width:200px">
+                  {{ a.user_principal_name or '(unknown)' }}
+                </a>
+              </div>
+              <span class="text-muted" style="font-size:0.7rem">
+                {{ a.created_at | string | truncate(16, false, '') if a.created_at else '' }}
+              </span>
+            </div>
+            <div class="text-muted small mt-1">
+              {{ a.ip_address or '' }}
+              {% if a.country %} &bull; {{ a.country }}{% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <div class="p-3 text-muted small">
+            <i class="bi bi-check-circle-fill text-success me-1"></i>No anomalies in window.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const timeline = {{ metrics.timeline | tojson }};
+  if (!timeline.length) return;
+
+  const labels = timeline.map(t => t.bucket ? t.bucket.substring(0, 16) : '');
+  const totals = timeline.map(t => t.total);
+  const fails  = timeline.map(t => t.failures);
+
+  new Chart(document.getElementById('timelineChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Total',
+          data: totals,
+          backgroundColor: 'rgba(13, 110, 253, 0.4)',
+          borderColor: 'rgba(13, 110, 253, 0.8)',
+          borderWidth: 1,
+        },
+        {
+          label: 'Failures',
+          data: fails,
+          backgroundColor: 'rgba(220, 53, 69, 0.7)',
+          borderColor: 'rgba(220, 53, 69, 0.9)',
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { stacked: false, ticks: { maxRotation: 45, font: { size: 10 } } },
+        y: { beginAtZero: true },
+      },
+    },
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,47 @@
+/* M365 Log Master – custom styles */
+
+/* Fix Bootstrap btn-xs (not included by default) */
+.btn-xs {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+}
+
+/* Make pre blocks in cards look clean */
+pre.small {
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Narrow scrollable anomaly list */
+.list-group-item .badge {
+  font-size: 0.7rem;
+}
+
+/* Sticky nav */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+}
+
+/* Card border tweak */
+.card {
+  border-radius: 0.5rem;
+}
+
+/* Table row highlight on hover */
+.table-hover tbody tr:hover {
+  background-color: rgba(13, 110, 253, 0.05);
+}
+
+/* Footer */
+footer {
+  font-size: 0.8rem;
+}
+
+/* Clock in navbar */
+#clock {
+  font-family: monospace;
+  font-size: 0.85rem;
+}

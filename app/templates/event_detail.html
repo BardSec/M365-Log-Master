@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Event {{ event.id }} – M365 Log Master{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('pages.search') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Back to Search
+  </a>
+</div>
+
+<h4 class="mb-3">
+  <i class="bi bi-file-earmark-text me-2 text-primary"></i>Sign-In Event Detail
+</h4>
+
+<div class="row g-3">
+  <!-- Summary card -->
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-white fw-semibold">Summary</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            {% macro row(label, value, badge_class='') %}
+            <tr>
+              <th class="text-muted fw-normal ps-3" style="width:40%">{{ label }}</th>
+              <td class="pe-3">
+                {% if badge_class and value %}
+                  <span class="badge {{ badge_class }}">{{ value }}</span>
+                {% else %}
+                  <span class="{{ 'text-muted' if not value else '' }}">{{ value or '—' }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endmacro %}
+
+            {{ row('Event ID', event.id) }}
+            {{ row('Time (UTC)', event.created_at | string | truncate(23, false, '') if event.created_at else None) }}
+            {{ row('User (UPN)', event.user_principal_name) }}
+            {{ row('User Display Name', event.user_display_name) }}
+            {{ row('User ID', event.user_id) }}
+            {{ row('App', event.app_display_name) }}
+            {{ row('App ID', event.app_id) }}
+            {{ row('IP Address', event.ip_address) }}
+            {{ row('Client App', event.client_app_used) }}
+            {{ row('Country', event.country) }}
+
+            {% set ec = event.error_code %}
+            <tr>
+              <th class="text-muted fw-normal ps-3">Auth Result</th>
+              <td class="pe-3">
+                {% if ec == 0 or ec is none %}
+                  <span class="badge bg-success">Success</span>
+                {% else %}
+                  <span class="badge bg-danger">Failure ({{ ec }})</span>
+                {% endif %}
+              </td>
+            </tr>
+
+            {% set ca = event.conditional_access_status %}
+            <tr>
+              <th class="text-muted fw-normal ps-3">CA Status</th>
+              <td class="pe-3">
+                {% if ca == 'success' %}<span class="badge bg-success">Pass</span>
+                {% elif ca == 'failure' %}<span class="badge bg-danger">Fail</span>
+                {% else %}<span class="text-muted">{{ ca or '—' }}</span>
+                {% endif %}
+              </td>
+            </tr>
+
+            {% set risk = event.risk_level_aggregated %}
+            <tr>
+              <th class="text-muted fw-normal ps-3">Risk Level</th>
+              <td class="pe-3">
+                {% if risk == 'high' %}<span class="badge bg-danger">High</span>
+                {% elif risk == 'medium' %}<span class="badge bg-warning text-dark">Medium</span>
+                {% elif risk == 'low' %}<span class="badge bg-info text-dark">Low</span>
+                {% elif risk == 'none' %}<span class="badge bg-secondary">None</span>
+                {% else %}<span class="text-muted">{{ risk or '—' }}</span>
+                {% endif %}
+              </td>
+            </tr>
+
+            {{ row('Risk Detail', event.risk_detail) }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status / Location / Device -->
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-info-circle me-1 text-primary"></i>Status
+      </div>
+      <div class="card-body py-2">
+        <pre class="mb-0 small">{{ event.status | tojson(indent=2) }}</pre>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-geo-alt me-1 text-warning"></i>Location
+      </div>
+      <div class="card-body py-2">
+        <pre class="mb-0 small">{{ event.location | tojson(indent=2) }}</pre>
+      </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-laptop me-1 text-secondary"></i>Device Detail
+      </div>
+      <div class="card-body py-2">
+        <pre class="mb-0 small">{{ event.device_detail | tojson(indent=2) }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raw JSON -->
+  <div class="col-12">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-braces me-1 text-secondary"></i>Raw Event JSON</span>
+        <button class="btn btn-sm btn-outline-secondary" onclick="copyRaw()">
+          <i class="bi bi-clipboard me-1"></i>Copy
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <pre id="rawJson" class="mb-0 p-3 small" style="max-height:400px;overflow:auto;background:#f8f9fa">{{ raw_json }}</pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyRaw() {
+  const text = document.getElementById('rawJson').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Copied to clipboard.');
+  });
+}
+</script>
+{% endblock %}

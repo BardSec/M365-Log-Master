@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Sync Status – M365 Log Master{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-arrow-repeat me-2 text-info"></i>Sync Status</h4>
+  <button class="btn btn-success" id="syncNowBtn" onclick="syncNow()">
+    <i class="bi bi-play-fill me-1"></i>Sync Now
+  </button>
+</div>
+
+<!-- Current cursor -->
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-6">
+    <div class="card shadow-sm border-0">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-bookmark-fill me-1 text-info"></i>Sync Cursor
+      </div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <th class="text-muted fw-normal" style="width:40%">Last Sync Time</th>
+              <td>{{ info.last_sync_time or '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% if info.last_run %}
+  <div class="col-12 col-md-6">
+    <div class="card shadow-sm border-0
+      {% if info.last_run.status == 'success' %}border-success{% else %}border-danger{% endif %}">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-clock-history me-1 text-secondary"></i>Last Run
+      </div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <th class="text-muted fw-normal" style="width:40%">Status</th>
+              <td>
+                {% if info.last_run.status == 'success' %}
+                  <span class="badge bg-success">Success</span>
+                {% else %}
+                  <span class="badge bg-danger">Error</span>
+                {% endif %}
+              </td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Started</th>
+              <td>{{ info.last_run.started_at or '—' }}</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Finished</th>
+              <td>{{ info.last_run.finished_at or '—' }}</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Fetched</th>
+              <td>{{ info.last_run.fetched_count }}</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Inserted</th>
+              <td>{{ info.last_run.inserted_count }}</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Duration</th>
+              <td>{{ "%.1f s" | format(info.last_run.duration_seconds) if info.last_run.duration_seconds else '—' }}</td>
+            </tr>
+            {% if info.last_run.error_message %}
+            <tr>
+              <th class="text-muted fw-normal">Error</th>
+              <td class="text-danger small">{{ info.last_run.error_message }}</td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Sync result banner (populated by JS) -->
+<div id="syncResult" class="alert d-none mb-4" role="alert"></div>
+
+<!-- History table -->
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-white fw-semibold">
+    <i class="bi bi-list-ul me-1 text-secondary"></i>Sync History
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-secondary">
+        <tr>
+          <th>#</th>
+          <th>Started</th>
+          <th>Finished</th>
+          <th>Status</th>
+          <th>Fetched</th>
+          <th>Inserted</th>
+          <th>Duration</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in history %}
+        <tr>
+          <td class="text-muted small">{{ run.id }}</td>
+          <td class="small text-nowrap">{{ run.started_at | truncate(19, false, '') }}</td>
+          <td class="small text-nowrap">{{ run.finished_at | truncate(19, false, '') if run.finished_at else '—' }}</td>
+          <td>
+            {% if run.status == 'success' %}
+              <span class="badge bg-success">OK</span>
+            {% else %}
+              <span class="badge bg-danger">Err</span>
+            {% endif %}
+          </td>
+          <td>{{ run.fetched_count }}</td>
+          <td>{{ run.inserted_count }}</td>
+          <td class="small">{{ "%.1f s" | format(run.duration_seconds) if run.duration_seconds else '—' }}</td>
+          <td class="small text-danger">{{ run.error_message | truncate(60) if run.error_message else '' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-3">No sync runs yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function syncNow() {
+  const btn = document.getElementById('syncNowBtn');
+  const resultDiv = document.getElementById('syncResult');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Syncing…';
+  resultDiv.className = 'alert d-none';
+
+  try {
+    const resp = await fetch('/api/sync-now', { method: 'POST' });
+    const data = await resp.json();
+
+    if (data.status === 'success') {
+      resultDiv.className = 'alert alert-success';
+      resultDiv.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i>
+        Sync complete &mdash; fetched <strong>${data.fetched_count}</strong>,
+        inserted <strong>${data.inserted_count}</strong>,
+        duration <strong>${(data.duration_seconds||0).toFixed(1)}s</strong>.`;
+    } else {
+      resultDiv.className = 'alert alert-danger';
+      resultDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>
+        Sync failed: ${data.error || data.error_message || 'unknown error'}`;
+    }
+  } catch (e) {
+    resultDiv.className = 'alert alert-danger';
+    resultDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>Request error: ${e}`;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Sync Now';
+    setTimeout(() => location.reload(), 3000);
+  }
+}
+</script>
+{% endblock %}

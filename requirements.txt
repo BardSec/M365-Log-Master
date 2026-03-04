@@ -1,0 +1,15 @@
+Flask==3.0.3
+SQLAlchemy==2.0.29
+alembic==1.13.1
+psycopg2-binary==2.9.9
+msal==1.28.0
+APScheduler==3.10.4
+requests==2.31.0
+python-dotenv==1.0.1
+gunicorn==21.2.0
+Werkzeug==3.0.3
+
+# Testing
+pytest==8.1.1
+pytest-mock==3.14.0
+requests-mock==1.12.1

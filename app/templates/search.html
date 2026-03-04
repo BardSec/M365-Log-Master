@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Search – M365 Log Master{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-search me-2 text-primary"></i>Search Sign-In Events</h4>
+</div>
+
+<!-- Filter form -->
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" action="{{ url_for('pages.search') }}" id="searchForm">
+      <div class="row g-2">
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label small fw-semibold">Keyword (user / app / IP)</label>
+          <input class="form-control" name="q" value="{{ q }}" placeholder="Search..." />
+        </div>
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label small fw-semibold">User Principal Name</label>
+          <input class="form-control" name="upn" value="{{ upn }}" placeholder="user@domain.com" />
+        </div>
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label small fw-semibold">IP Address</label>
+          <input class="form-control" name="ip" value="{{ ip }}" placeholder="1.2.3.4" />
+        </div>
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label small fw-semibold">App Display Name</label>
+          <input class="form-control" name="app" value="{{ app }}" placeholder="Microsoft Teams" />
+        </div>
+        <div class="col-12 col-md-6 col-lg-2">
+          <label class="form-label small fw-semibold">Error Code</label>
+          <input class="form-control" name="error_code" value="{{ error_code }}" placeholder="0" />
+        </div>
+        <div class="col-12 col-md-6 col-lg-2">
+          <label class="form-label small fw-semibold">Country</label>
+          <input class="form-control" name="country" value="{{ country }}" placeholder="US" />
+        </div>
+        <div class="col-12 col-md-6 col-lg-2">
+          <label class="form-label small fw-semibold">From (UTC)</label>
+          <input class="form-control" type="datetime-local" name="from" value="{{ from_str }}" />
+        </div>
+        <div class="col-12 col-md-6 col-lg-2">
+          <label class="form-label small fw-semibold">To (UTC)</label>
+          <input class="form-control" type="datetime-local" name="to" value="{{ to_str }}" />
+        </div>
+        <div class="col-12 col-md-auto d-flex align-items-end gap-2">
+          <button class="btn btn-primary" type="submit">
+            <i class="bi bi-search me-1"></i>Search
+          </button>
+          <a href="{{ url_for('pages.search') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i>Clear
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Results -->
+{% if results is not none %}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted small">
+      <strong>{{ results.total }}</strong> result(s) – page {{ results.page }} of {{ results.pages }}
+    </span>
+    <div class="d-flex gap-2">
+      {% if results.page > 1 %}
+        <a href="{{ request.url | replace('page=' ~ results.page, 'page=' ~ (results.page - 1)) }}"
+           class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-chevron-left"></i> Prev
+        </a>
+      {% endif %}
+      {% if results.page < results.pages %}
+        <a href="{{ request.url | replace('page=' ~ results.page, 'page=' ~ (results.page + 1)) }}"
+           class="btn btn-sm btn-outline-secondary">
+          Next <i class="bi bi-chevron-right"></i>
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if results.results %}
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0 align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Time (UTC)</th>
+            <th>User</th>
+            <th>App</th>
+            <th>IP</th>
+            <th>Country</th>
+            <th>Error</th>
+            <th>CA Status</th>
+            <th>Risk</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in results.results %}
+          <tr class="{% if ev.error_code and ev.error_code != 0 %}table-danger{% endif %}">
+            <td class="text-nowrap small">
+              {{ ev.created_at | string | truncate(19, false, '') if ev.created_at else '—' }}
+            </td>
+            <td class="small">{{ ev.user_principal_name or '—' }}</td>
+            <td class="small">{{ ev.app_display_name or '—' }}</td>
+            <td class="text-nowrap small">{{ ev.ip_address or '—' }}</td>
+            <td class="small">{{ ev.country or '—' }}</td>
+            <td class="small">
+              {% if ev.error_code == 0 or ev.error_code is none %}
+                <span class="badge bg-success">OK</span>
+              {% else %}
+                <span class="badge bg-danger">{{ ev.error_code }}</span>
+              {% endif %}
+            </td>
+            <td class="small">
+              {% if ev.conditional_access_status == 'success' %}
+                <span class="badge bg-success">Pass</span>
+              {% elif ev.conditional_access_status == 'failure' %}
+                <span class="badge bg-danger">Fail</span>
+              {% else %}
+                <span class="text-muted">{{ ev.conditional_access_status or '—' }}</span>
+              {% endif %}
+            </td>
+            <td class="small">
+              {% set risk = ev.risk_level_aggregated %}
+              {% if risk == 'high' %}
+                <span class="badge bg-danger">High</span>
+              {% elif risk == 'medium' %}
+                <span class="badge bg-warning text-dark">Med</span>
+              {% elif risk == 'low' %}
+                <span class="badge bg-info text-dark">Low</span>
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('pages.event_detail', event_id=ev.id) }}"
+                 class="btn btn-xs btn-outline-primary py-0 px-2 small">
+                View
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+    <div class="alert alert-info">
+      <i class="bi bi-info-circle me-1"></i>No events found matching your criteria.
+    </div>
+  {% endif %}
+
+{% else %}
+  <div class="alert alert-secondary">
+    <i class="bi bi-lightbulb me-1"></i>
+    Enter search criteria above and press <strong>Search</strong>.
+    Leave all fields empty to list recent events by date.
+  </div>
+{% endif %}
+{% endblock %}
