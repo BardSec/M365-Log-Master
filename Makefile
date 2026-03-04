@@ -22,10 +22,10 @@ migrate:
 	docker compose exec web alembic upgrade head
 
 sync-now:
-	curl -s -X POST http://localhost:8080/api/sync-now | python3 -m json.tool
+	curl -s -X POST http://localhost:$${PORT:-8080}/api/sync-now | python3 -m json.tool
 
 psql:
 	docker compose exec db psql -U m365user -d m365logs
 
 dev:
-	FLASK_ENV=development flask --app "app:create_app()" run --host 0.0.0.0 --port 8080 --debug
+	FLASK_ENV=development flask --app "app:create_app()" run --host 0.0.0.0 --port $${PORT:-8080} --debug
