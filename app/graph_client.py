@@ -139,7 +139,15 @@ class GraphClient:
                 headers["Authorization"] = f"Bearer {token}"
                 continue
 
-            resp.raise_for_status()
+            # Include Graph's error body in the exception so it shows in sync logs
+            try:
+                detail = resp.json().get("error", {})
+                msg = f"{detail.get('code', '')}: {detail.get('message', resp.text)}"
+            except Exception:
+                msg = resp.text
+            raise requests.HTTPError(
+                f"{resp.status_code} {resp.reason} – {msg}", response=resp
+            )
 
         raise RuntimeError(f"Exceeded max retries for URL: {url}")
 
