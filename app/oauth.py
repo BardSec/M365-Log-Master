@@ -10,9 +10,9 @@ from flask import current_app, jsonify, redirect, request, session, url_for
 
 logger = logging.getLogger(__name__)
 
-# Scopes requested during user login – covers basic profile info only.
-# Graph data is fetched via the separate client-credentials token.
-OAUTH_SCOPES = ["openid", "profile", "email"]
+# Scopes for user login. Do NOT include openid/profile/email/offline_access —
+# MSAL adds them automatically. An empty list gets the default OIDC claims.
+OAUTH_SCOPES = []
 
 
 def _msal_app(cfg) -> msal.ConfidentialClientApplication:
