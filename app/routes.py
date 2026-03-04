@@ -42,10 +42,7 @@ def auth_login():
         return render_template(
             "auth_error.html",
             error="oauth_init_failed",
-            description=(
-                "Could not connect to Microsoft login. "
-                "Check TENANT_ID, CLIENT_ID, and CLIENT_SECRET in your configuration."
-            ),
+            description=f"MSAL error: {exc}",
         ), 500
 
     session["auth_flow"] = flow
