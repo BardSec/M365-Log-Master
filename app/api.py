@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -106,6 +107,9 @@ def api_dashboard():
         return jsonify({"error": str(exc)}), 500
 
 
+_sync_lock = threading.Lock()
+
+
 @api.post("/sync-now")
 @login_required
 def api_sync_now():
@@ -121,24 +125,34 @@ def api_sync_now():
             400,
         )
 
-    from .graph_client import GraphClient
+    if not _sync_lock.acquire(blocking=False):
+        return jsonify({"status": "running", "message": "Sync already in progress."}), 409
 
-    client = GraphClient(
-        tenant_id=cfg.TENANT_ID,
-        client_id=cfg.CLIENT_ID,
-        client_secret=cfg.CLIENT_SECRET,
-        scope=cfg.GRAPH_SCOPE,
-    )
-    try:
-        stats = run_sync(
-            client,
-            lookback_minutes=cfg.SYNC_LOOKBACK_MINUTES,
-            page_size=cfg.GRAPH_PAGE_SIZE,
-        )
-        return jsonify(stats)
-    except Exception as exc:
-        logger.exception("Manual sync error")
-        return jsonify({"status": "error", "error": str(exc)}), 500
+    app = current_app._get_current_object()
+
+    def _run():
+        try:
+            with app.app_context():
+                from .graph_client import GraphClient
+
+                client = GraphClient(
+                    tenant_id=cfg.TENANT_ID,
+                    client_id=cfg.CLIENT_ID,
+                    client_secret=cfg.CLIENT_SECRET,
+                    scope=cfg.GRAPH_SCOPE,
+                )
+                run_sync(
+                    client,
+                    lookback_minutes=cfg.SYNC_LOOKBACK_MINUTES,
+                    page_size=cfg.GRAPH_PAGE_SIZE,
+                )
+        except Exception:
+            logger.exception("Manual sync error")
+        finally:
+            _sync_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started", "message": "Sync started in background. Poll /api/sync-status for results."}), 202
 
 
 @api.get("/sync-status")
