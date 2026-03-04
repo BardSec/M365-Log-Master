@@ -40,6 +40,9 @@ class Config:
     BASIC_AUTH_USERNAME: str = os.environ.get("BASIC_AUTH_USERNAME", "")
     BASIC_AUTH_PASSWORD: str = os.environ.get("BASIC_AUTH_PASSWORD", "")
 
+    # Demo mode – uses dummy data, no DB or Azure credentials required
+    DEMO_MODE: bool = os.environ.get("DEMO_MODE", "true").lower() == "true"
+
     @property
     def graph_configured(self) -> bool:
         return bool(self.TENANT_ID and self.CLIENT_ID and self.CLIENT_SECRET)

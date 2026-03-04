@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 
 from flask import (
@@ -17,9 +18,30 @@ from flask import (
 
 logger = logging.getLogger(__name__)
 
-from .oauth import complete_auth_flow, login_required, start_auth_flow
-from .queries import get_anomalies, get_dashboard_metrics, get_event_by_id, search_events
-from .sync_service import get_last_sync_info, get_sync_history
+_DEMO = os.environ.get("DEMO_MODE", "true").lower() == "true"
+
+if _DEMO:
+    from .demo_data import (
+        get_anomalies,
+        get_dashboard_metrics,
+        get_event_by_id,
+        get_last_sync_info,
+        get_sync_history,
+        search_events,
+    )
+
+    def login_required(fn):  # noqa: F811
+        return fn
+
+    def start_auth_flow(*_a, **_kw):
+        return {}
+
+    def complete_auth_flow(*_a, **_kw):
+        return {}
+else:
+    from .oauth import complete_auth_flow, login_required, start_auth_flow
+    from .queries import get_anomalies, get_dashboard_metrics, get_event_by_id, search_events
+    from .sync_service import get_last_sync_info, get_sync_history
 
 bp = Blueprint("pages", __name__)
 

@@ -15,6 +15,17 @@
 </head>
 <body class="bg-light">
 
+{% if demo_mode %}
+<div style="background:#0d6efd;color:#fff;font-size:0.76rem;letter-spacing:0.02em;padding:5px 0;text-align:center;">
+  <strong>DEMO MODE</strong> &mdash; Sample data only. No real credentials required.
+  <a href="https://github.com/BardSec/M365-Log-Master"
+     class="text-white ms-2 fw-semibold"
+     target="_blank" rel="noopener noreferrer">
+    <i class="bi bi-github me-1"></i>View source on GitHub
+  </a>
+</div>
+{% endif %}
+
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="{{ url_for('pages.index') }}">

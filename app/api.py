@@ -2,19 +2,35 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
 
-from .oauth import login_required
-from .queries import (
-    get_anomalies,
-    get_dashboard_metrics,
-    get_new_ips_per_user,
-    search_events,
-)
-from .sync_service import get_last_sync_info, get_sync_history, run_sync
+_DEMO = os.environ.get("DEMO_MODE", "true").lower() == "true"
+
+if _DEMO:
+    from .demo_data import (
+        get_anomalies,
+        get_dashboard_metrics,
+        get_last_sync_info,
+        get_new_ips_per_user,
+        get_sync_history,
+        search_events,
+    )
+
+    def login_required(fn):  # noqa: F811
+        return fn
+else:
+    from .oauth import login_required
+    from .queries import (
+        get_anomalies,
+        get_dashboard_metrics,
+        get_new_ips_per_user,
+        search_events,
+    )
+    from .sync_service import get_last_sync_info, get_sync_history, run_sync
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +126,15 @@ def api_dashboard():
 @login_required
 def api_sync_now():
     cfg = current_app.config["APP_CONFIG"]
+    if cfg.DEMO_MODE:
+        return jsonify({
+            "status": "success",
+            "fetched_count": 247,
+            "inserted_count": 241,
+            "duration_seconds": 3.8,
+            "message": "Demo mode – this is simulated sync output.",
+        })
+
     if not cfg.graph_configured:
         return (
             jsonify(

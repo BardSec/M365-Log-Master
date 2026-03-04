@@ -28,8 +28,9 @@ def create_app(config: Config | None = None) -> Flask:
     app.config["SECRET_KEY"] = config.SECRET_KEY
     app.config["APP_CONFIG"] = config
 
-    # Initialise database engine
-    init_db(config.DATABASE_URL)
+    # Initialise database engine (skipped in demo mode)
+    if not config.DEMO_MODE:
+        init_db(config.DATABASE_URL)
 
     # Register blueprints
     from .routes import bp as pages_bp
@@ -38,11 +39,16 @@ def create_app(config: Config | None = None) -> Flask:
     app.register_blueprint(pages_bp)
     app.register_blueprint(api_bp)
 
-    # Start background scheduler (skip in testing / Alembic)
-    if not app.testing and os.environ.get("SKIP_SCHEDULER") != "1":
+    # Start background scheduler (skip in testing, Alembic, or demo mode)
+    if not app.testing and os.environ.get("SKIP_SCHEDULER") != "1" and not config.DEMO_MODE:
         from .scheduler import start_scheduler, shutdown_scheduler
         start_scheduler(app)
         atexit.register(shutdown_scheduler)
+
+    # Inject demo_mode into all templates
+    @app.context_processor
+    def _inject_demo():
+        return {"demo_mode": config.DEMO_MODE}
 
     @app.template_filter("pretty_json")
     def pretty_json_filter(value):
