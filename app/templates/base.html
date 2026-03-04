@@ -44,10 +44,37 @@
           </a>
         </li>
       </ul>
-      <span class="navbar-text text-secondary small">
-        <i class="bi bi-clock me-1"></i>
-        <span id="clock"></span>
-      </span>
+      <div class="d-flex align-items-center gap-3">
+        <span class="navbar-text text-secondary small">
+          <i class="bi bi-clock me-1"></i>
+          <span id="clock"></span>
+        </span>
+
+        {% if session.get('user') %}
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-light dropdown-toggle d-flex align-items-center gap-1"
+                    type="button" data-bs-toggle="dropdown">
+              <i class="bi bi-person-circle"></i>
+              <span class="d-none d-md-inline">
+                {{ session.user.get('name') or session.user.get('preferred_username') or 'User' }}
+              </span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li>
+                <span class="dropdown-item-text small text-muted">
+                  {{ session.user.get('preferred_username') or '' }}
+                </span>
+              </li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <a class="dropdown-item text-danger" href="{{ url_for('pages.auth_logout') }}">
+                  <i class="bi bi-box-arrow-right me-1"></i>Sign out
+                </a>
+              </li>
+            </ul>
+          </div>
+        {% endif %}
+      </div>
     </div>
   </div>
 </nav>

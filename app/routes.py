@@ -4,31 +4,84 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-from flask import Blueprint, current_app, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 
+from .oauth import complete_auth_flow, login_required, start_auth_flow
 from .queries import get_anomalies, get_dashboard_metrics, get_event_by_id, search_events
 from .sync_service import get_last_sync_info, get_sync_history
 
 bp = Blueprint("pages", __name__)
 
 
-def _int_param(name: str, default: int) -> int:
-    try:
-        return int(request.args.get(name, default))
-    except (ValueError, TypeError):
-        return default
+# ── Auth routes ───────────────────────────────────────────────────────────────
+
+@bp.route("/auth/login")
+def auth_login():
+    cfg = current_app.config["APP_CONFIG"]
+    if not cfg.OAUTH_ENABLED:
+        return redirect(url_for("pages.dashboard"))
+
+    flow = start_auth_flow(cfg)
+    session["auth_flow"] = flow
+    return redirect(flow["auth_uri"])
 
 
-def _hours_from_window(window: str) -> int:
-    return {"24h": 24, "7d": 168, "30d": 720}.get(window, 24)
+@bp.route("/auth/callback")
+def auth_callback():
+    cfg = current_app.config["APP_CONFIG"]
+    if not cfg.OAUTH_ENABLED:
+        return redirect(url_for("pages.dashboard"))
 
+    result = complete_auth_flow(
+        cfg,
+        session.pop("auth_flow", {}),
+        request.args,
+    )
+
+    if "error" in result:
+        return render_template(
+            "auth_error.html",
+            error=result.get("error"),
+            description=result.get("error_description", ""),
+        ), 400
+
+    session["user"] = result.get("id_token_claims", {})
+    next_url = request.args.get("next") or url_for("pages.dashboard")
+    return redirect(next_url)
+
+
+@bp.route("/auth/logout")
+def auth_logout():
+    cfg = current_app.config["APP_CONFIG"]
+    session.clear()
+    if cfg.OAUTH_ENABLED:
+        post_logout = url_for("pages.index", _external=True)
+        ms_logout = (
+            f"https://login.microsoftonline.com/{cfg.TENANT_ID}/oauth2/v2.0/logout"
+            f"?post_logout_redirect_uri={post_logout}"
+        )
+        return redirect(ms_logout)
+    return redirect(url_for("pages.index"))
+
+
+# ── Application routes ────────────────────────────────────────────────────────
 
 @bp.route("/")
+@login_required
 def index():
     return redirect(url_for("pages.dashboard"))
 
 
 @bp.route("/search")
+@login_required
 def search():
     keyword = request.args.get("q", "").strip()
     upn = request.args.get("upn", "").strip()
@@ -78,6 +131,7 @@ def search():
 
 
 @bp.route("/event/<event_id>")
+@login_required
 def event_detail(event_id: str):
     event = get_event_by_id(event_id)
     if event is None:
@@ -88,6 +142,7 @@ def event_detail(event_id: str):
 
 
 @bp.route("/dashboard")
+@login_required
 def dashboard():
     window = request.args.get("window", "24h")
     hours = _hours_from_window(window)
@@ -103,10 +158,24 @@ def dashboard():
 
 
 @bp.route("/admin/sync-status")
+@login_required
 def sync_status():
     info = get_last_sync_info()
     history = get_sync_history(limit=20)
     return render_template("sync_status.html", info=info, history=history)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _int_param(name: str, default: int) -> int:
+    try:
+        return int(request.args.get(name, default))
+    except (ValueError, TypeError):
+        return default
+
+
+def _hours_from_window(window: str) -> int:
+    return {"24h": 24, "7d": 168, "30d": 720}.get(window, 24)
 
 
 def _parse_dt(s: str) -> datetime | None:

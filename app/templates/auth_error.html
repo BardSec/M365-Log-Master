@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Sign-In Error – M365 Log Master{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+  <div class="col-12 col-md-6">
+    <div class="card shadow-sm border-danger">
+      <div class="card-header bg-danger text-white fw-semibold">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>Authentication Error
+      </div>
+      <div class="card-body">
+        <p class="mb-1"><strong>Error:</strong> {{ error }}</p>
+        {% if description %}
+          <p class="text-muted small mb-3">{{ description }}</p>
+        {% endif %}
+        <a href="{{ url_for('pages.auth_login') }}" class="btn btn-primary">
+          <i class="bi bi-arrow-clockwise me-1"></i>Try again
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

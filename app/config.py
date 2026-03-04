@@ -29,7 +29,14 @@ class Config:
     # How many records to fetch per Graph page
     GRAPH_PAGE_SIZE: int = int(os.environ.get("GRAPH_PAGE_SIZE", "500"))
 
-    # Optional basic auth
+    # Microsoft SSO (OAuth 2.0 authorization-code flow)
+    OAUTH_ENABLED: bool = os.environ.get("OAUTH_ENABLED", "false").lower() == "true"
+    # Must match a Web redirect URI registered in the Azure AD app registration
+    OAUTH_REDIRECT_URI: str = os.environ.get(
+        "OAUTH_REDIRECT_URI", "http://localhost:8080/auth/callback"
+    )
+
+    # Optional basic auth (alternative to OAuth; disabled if username is blank)
     BASIC_AUTH_USERNAME: str = os.environ.get("BASIC_AUTH_USERNAME", "")
     BASIC_AUTH_PASSWORD: str = os.environ.get("BASIC_AUTH_PASSWORD", "")
 

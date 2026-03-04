@@ -7,6 +7,7 @@ from typing import Any
 
 from flask import Blueprint, current_app, jsonify, request
 
+from .oauth import login_required
 from .queries import (
     get_anomalies,
     get_dashboard_metrics,
@@ -43,6 +44,7 @@ def _hours_from_window(window: str) -> int:
 
 
 @api.get("/search")
+@login_required
 def api_search():
     keyword = request.args.get("q", "").strip() or None
     upn = request.args.get("upn", "").strip() or None
@@ -81,6 +83,7 @@ def api_search():
 
 
 @api.get("/dashboard")
+@login_required
 def api_dashboard():
     window = request.args.get("window", "24h")
     hours = _hours_from_window(window)
@@ -104,6 +107,7 @@ def api_dashboard():
 
 
 @api.post("/sync-now")
+@login_required
 def api_sync_now():
     cfg = current_app.config["APP_CONFIG"]
     if not cfg.graph_configured:
@@ -138,6 +142,7 @@ def api_sync_now():
 
 
 @api.get("/sync-status")
+@login_required
 def api_sync_status():
     info = get_last_sync_info()
     history = get_sync_history(limit=10)
