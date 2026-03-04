@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from flask import (
@@ -13,6 +14,8 @@ from flask import (
     session,
     url_for,
 )
+
+logger = logging.getLogger(__name__)
 
 from .oauth import complete_auth_flow, login_required, start_auth_flow
 from .queries import get_anomalies, get_dashboard_metrics, get_event_by_id, search_events
@@ -29,7 +32,22 @@ def auth_login():
     if not cfg.OAUTH_ENABLED:
         return redirect(url_for("pages.dashboard"))
 
-    flow = start_auth_flow(cfg)
+    # Preserve the intended destination through the OAuth round-trip
+    session["next_url"] = request.args.get("next", "")
+
+    try:
+        flow = start_auth_flow(cfg)
+    except Exception as exc:
+        logger.exception("Failed to start OAuth flow: %s", exc)
+        return render_template(
+            "auth_error.html",
+            error="oauth_init_failed",
+            description=(
+                "Could not connect to Microsoft login. "
+                "Check TENANT_ID, CLIENT_ID, and CLIENT_SECRET in your configuration."
+            ),
+        ), 500
+
     session["auth_flow"] = flow
     return redirect(flow["auth_uri"])
 
@@ -54,7 +72,8 @@ def auth_callback():
         ), 400
 
     session["user"] = result.get("id_token_claims", {})
-    next_url = request.args.get("next") or url_for("pages.dashboard")
+    # Read next URL from session (it's not in request.args after OAuth redirect)
+    next_url = session.pop("next_url", "") or url_for("pages.dashboard")
     return redirect(next_url)
 
 
