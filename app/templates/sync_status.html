@@ -147,24 +147,73 @@ async function syncNow() {
     const resp = await fetch('/api/sync-now', { method: 'POST' });
     const data = await resp.json();
 
-    if (data.status === 'success') {
-      resultDiv.className = 'alert alert-success';
-      resultDiv.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i>
-        Sync complete &mdash; fetched <strong>${data.fetched_count}</strong>,
-        inserted <strong>${data.inserted_count}</strong>,
-        duration <strong>${(data.duration_seconds||0).toFixed(1)}s</strong>.`;
-    } else {
-      resultDiv.className = 'alert alert-danger';
-      resultDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>
-        Sync failed: ${data.error || data.error_message || 'unknown error'}`;
+    if (resp.status === 409) {
+      resultDiv.className = 'alert alert-warning';
+      resultDiv.innerHTML = `<i class="bi bi-hourglass-split me-1"></i>Sync already in progress.`;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Sync Now';
+      return;
     }
+
+    if (resp.status === 202) {
+      resultDiv.className = 'alert alert-info';
+      resultDiv.innerHTML = `<i class="bi bi-arrow-repeat me-1"></i>Sync running in background&hellip;`;
+      await pollUntilDone();
+      return;
+    }
+
+    // Unexpected response
+    resultDiv.className = 'alert alert-danger';
+    resultDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>
+      Sync failed: ${data.error || data.error_message || 'unknown error'}`;
   } catch (e) {
     resultDiv.className = 'alert alert-danger';
     resultDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>Request error: ${e}`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Sync Now';
+  }
+}
+
+async function pollUntilDone() {
+  const btn = document.getElementById('syncNowBtn');
+  const resultDiv = document.getElementById('syncResult');
+  const startedAt = Date.now();
+
+  while (true) {
+    await new Promise(r => setTimeout(r, 3000));
+
+    let status;
+    try {
+      const r = await fetch('/api/sync-status');
+      status = await r.json();
+    } catch (e) {
+      continue;
+    }
+
+    const last = status.cursor && status.cursor.last_run;
+    if (!last) continue;
+
+    // Wait until a run finished after we pressed the button
+    const finished = last.finished_at ? new Date(last.finished_at).getTime() : 0;
+    if (finished < startedAt) continue;
+
+    if (last.status === 'success') {
+      resultDiv.className = 'alert alert-success';
+      resultDiv.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i>
+        Sync complete &mdash; fetched <strong>${last.fetched_count}</strong>,
+        inserted <strong>${last.inserted_count}</strong>,
+        duration <strong>${(last.duration_seconds||0).toFixed(1)}s</strong>.`;
+    } else {
+      resultDiv.className = 'alert alert-danger';
+      resultDiv.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>
+        Sync failed: ${last.error_message || 'unknown error'}`;
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Sync Now';
     setTimeout(() => location.reload(), 3000);
+    return;
   }
 }
 </script>
