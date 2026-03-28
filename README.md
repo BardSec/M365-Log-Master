@@ -16,7 +16,7 @@ A self-hosted MVP that ingests **Microsoft 365 sign-in logs** from Microsoft Gra
 8. [Running Tests](#running-tests)
 9. [Development Notes & Assumptions](#development-notes--assumptions)
 10. [Security Notes](#security-notes)
-
+ 
 ---
 
 ## Features
