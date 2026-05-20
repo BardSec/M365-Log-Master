@@ -14,8 +14,10 @@ from app.archive_service import (
     _r2_key,
     archive_day,
     days_to_archive,
+    load_archived_day,
     run_archive_sweep,
 )
+import app.archive_service as archive_service
 
 
 # ─── _r2_key ─────────────────────────────────────────────────────────────────
@@ -244,6 +246,76 @@ def test_run_archive_sweep_continues_on_per_day_error():
     assert result["rows_archived"] == 20
     assert result["status"] == "partial"
     assert result["errors"] == [{"day": "2026-01-02", "error": "boom"}]
+
+
+def test_load_archived_day_fetches_and_parses(monkeypatch):
+    cfg = _make_cfg()
+    # Build a gzipped JSONL payload matching what the archive emits.
+    rows_in = [{"id": "a"}, {"id": "b"}, {"id": "c"}]
+    payload, _ = _build_gzip_payload([dict(r) for r in rows_in])
+
+    body = MagicMock()
+    body.read.return_value = payload
+    fake_s3 = MagicMock()
+    fake_s3.get_object.return_value = {"Body": body}
+
+    # Reset module-level day cache so test is hermetic.
+    archive_service._DAY_CACHE.clear()
+    archive_service._DAY_CACHE_ORDER.clear()
+
+    with patch("app.archive_service.get_r2_client", return_value=fake_s3):
+        rows = load_archived_day(cfg, dt.date(2026, 4, 1))
+
+    assert [r["id"] for r in rows] == ["a", "b", "c"]
+    fake_s3.get_object.assert_called_once_with(
+        Bucket="test-bucket", Key="signins/2026/04/2026-04-01.jsonl.gz"
+    )
+
+
+def test_load_archived_day_uses_cache_on_second_call():
+    cfg = _make_cfg()
+    payload, _ = _build_gzip_payload([{"id": "x"}])
+
+    body = MagicMock()
+    body.read.return_value = payload
+    fake_s3 = MagicMock()
+    fake_s3.get_object.return_value = {"Body": body}
+
+    archive_service._DAY_CACHE.clear()
+    archive_service._DAY_CACHE_ORDER.clear()
+
+    with patch("app.archive_service.get_r2_client", return_value=fake_s3):
+        load_archived_day(cfg, dt.date(2026, 4, 2))
+        load_archived_day(cfg, dt.date(2026, 4, 2))  # cache hit
+
+    # R2 should only be hit once
+    assert fake_s3.get_object.call_count == 1
+
+
+def test_load_archived_day_cache_evicts_oldest():
+    cfg = _make_cfg()
+    payload, _ = _build_gzip_payload([{"id": "x"}])
+
+    def fresh_body():
+        body = MagicMock()
+        body.read.return_value = payload
+        return body
+
+    fake_s3 = MagicMock()
+    fake_s3.get_object.side_effect = lambda **_: {"Body": fresh_body()}
+
+    archive_service._DAY_CACHE.clear()
+    archive_service._DAY_CACHE_ORDER.clear()
+
+    with patch("app.archive_service.get_r2_client", return_value=fake_s3):
+        # Cache max is 2; loading 3 different days should evict the first.
+        load_archived_day(cfg, dt.date(2026, 4, 1))
+        load_archived_day(cfg, dt.date(2026, 4, 2))
+        load_archived_day(cfg, dt.date(2026, 4, 3))
+
+    assert "2026-04-01" not in archive_service._DAY_CACHE
+    assert "2026-04-02" in archive_service._DAY_CACHE
+    assert "2026-04-03" in archive_service._DAY_CACHE
 
 
 def test_run_archive_sweep_max_days_limit():

@@ -300,6 +300,92 @@ def run_archive_sweep(cfg, max_days: int | None = None) -> dict:
     return summary
 
 
+def list_archived_days() -> list[dict]:
+    """Return all archive_log entries, newest day first."""
+    session = get_session()
+    try:
+        rows = session.execute(
+            text(
+                "SELECT day, status, rows_archived, bytes_uploaded, r2_key, "
+                "       error_message, started_at, finished_at "
+                "FROM archive_log ORDER BY day DESC"
+            )
+        ).mappings().all()
+        return [dict(r) for r in rows]
+    finally:
+        session.close()
+
+
+def get_archived_day_record(day: dt.date) -> dict | None:
+    """Look up a single archive_log entry by day."""
+    session = get_session()
+    try:
+        row = session.execute(
+            text(
+                "SELECT day, status, rows_archived, bytes_uploaded, r2_key, "
+                "       error_message, started_at, finished_at "
+                "FROM archive_log WHERE day = :day"
+            ),
+            {"day": day},
+        ).mappings().first()
+        return dict(row) if row else None
+    finally:
+        session.close()
+
+
+# Process-local cache so repeated pagination clicks on the same archived day
+# don't re-download from R2. Bounded so a couple of huge days don't blow up
+# RAM on the box (only ~2 GB free at steady state).
+_DAY_CACHE: "dict[str, list[dict]]" = {}
+_DAY_CACHE_ORDER: list[str] = []
+_DAY_CACHE_MAX = 2
+
+
+def _cache_day(key: str, rows: list[dict]) -> None:
+    """Insert into the LRU-ish day cache, evicting oldest if needed."""
+    if key in _DAY_CACHE:
+        _DAY_CACHE_ORDER.remove(key)
+    _DAY_CACHE[key] = rows
+    _DAY_CACHE_ORDER.append(key)
+    while len(_DAY_CACHE_ORDER) > _DAY_CACHE_MAX:
+        evict = _DAY_CACHE_ORDER.pop(0)
+        _DAY_CACHE.pop(evict, None)
+
+
+def load_archived_day(cfg, day: dt.date) -> list[dict]:
+    """
+    Fetch one day's archive from R2 and return its parsed rows.
+
+    The whole day is loaded into memory (caller iterates / paginates).
+    Cached process-locally so repeat calls within a session are free.
+    """
+    if not cfg.archive_configured:
+        raise RuntimeError("Archive is not configured.")
+
+    cache_key = day.isoformat()
+    cached = _DAY_CACHE.get(cache_key)
+    if cached is not None:
+        # Promote to most-recent in eviction order
+        _DAY_CACHE_ORDER.remove(cache_key)
+        _DAY_CACHE_ORDER.append(cache_key)
+        return cached
+
+    key = _r2_key(day)
+    s3 = get_r2_client(cfg)
+    obj = s3.get_object(Bucket=cfg.R2_BUCKET, Key=key)
+    raw = obj["Body"].read()
+    decompressed = gzip.decompress(raw)
+
+    rows: list[dict] = []
+    for line in decompressed.splitlines():
+        if not line:
+            continue
+        rows.append(json.loads(line))
+
+    _cache_day(cache_key, rows)
+    return rows
+
+
 def get_archive_status(cfg) -> dict:
     """For the admin dashboard: earliest hot date + last archive run + R2 totals."""
     session = get_session()

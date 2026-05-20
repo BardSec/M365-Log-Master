@@ -17,7 +17,12 @@ from flask import (
 
 logger = logging.getLogger(__name__)
 
-from .archive_service import get_archive_status
+from .archive_service import (
+    get_archive_status,
+    get_archived_day_record,
+    list_archived_days,
+    load_archived_day,
+)
 from .oauth import complete_auth_flow, login_required, start_auth_flow
 from .queries import get_anomalies, get_dashboard_metrics, get_event_by_id, search_events
 from .sync_service import get_last_sync_info, get_sync_history
@@ -193,6 +198,115 @@ def dashboard():
         window=window,
         hours=hours,
         type_key=type_key,
+    )
+
+
+@bp.route("/admin/archive")
+@login_required
+def archive_index():
+    cfg = current_app.config["APP_CONFIG"]
+    days = list_archived_days()
+    return render_template(
+        "archive_list.html",
+        days=days,
+        archive_configured=cfg.archive_configured,
+    )
+
+
+@bp.route("/admin/archive/<day_str>")
+@login_required
+def archive_day(day_str: str):
+    cfg = current_app.config["APP_CONFIG"]
+    try:
+        day = datetime.strptime(day_str, "%Y-%m-%d").date()
+    except ValueError:
+        return render_template("404.html"), 404
+
+    record = get_archived_day_record(day)
+    if record is None or record.get("status") != "success":
+        return render_template("404.html"), 404
+
+    page = _int_param("page", 1)
+    per_page = _int_param("per_page", 50)
+    upn = request.args.get("upn", "").strip().lower()
+    ip = request.args.get("ip", "").strip().lower()
+
+    try:
+        rows = load_archived_day(cfg, day)
+    except Exception as exc:
+        logger.exception("Failed to load archive for %s", day)
+        return render_template(
+            "archive_day.html",
+            day=day,
+            record=record,
+            rows=[],
+            page=1,
+            per_page=per_page,
+            total=0,
+            pages=0,
+            upn=upn,
+            ip=ip,
+            error=str(exc),
+        )
+
+    filtered = rows
+    if upn:
+        filtered = [
+            r for r in filtered
+            if (r.get("user_principal_name") or "").lower().find(upn) != -1
+        ]
+    if ip:
+        filtered = [
+            r for r in filtered
+            if (r.get("ip_address") or "").lower().find(ip) != -1
+        ]
+
+    total = len(filtered)
+    pages = (total + per_page - 1) // per_page if total else 0
+    start = (page - 1) * per_page
+    page_rows = filtered[start : start + per_page]
+
+    return render_template(
+        "archive_day.html",
+        day=day,
+        record=record,
+        rows=page_rows,
+        page=page,
+        per_page=per_page,
+        total=total,
+        pages=pages,
+        upn=upn,
+        ip=ip,
+        error=None,
+    )
+
+
+@bp.route("/admin/archive/<day_str>/event/<event_id>")
+@login_required
+def archive_event(day_str: str, event_id: str):
+    cfg = current_app.config["APP_CONFIG"]
+    try:
+        day = datetime.strptime(day_str, "%Y-%m-%d").date()
+    except ValueError:
+        return render_template("404.html"), 404
+
+    try:
+        rows = load_archived_day(cfg, day)
+    except Exception:
+        logger.exception("Failed to load archive for %s", day)
+        return render_template("404.html"), 404
+
+    event = next((r for r in rows if r.get("id") == event_id), None)
+    if event is None:
+        return render_template("404.html"), 404
+
+    raw_json = json.dumps(event.get("raw_event") or {}, indent=2, default=str)
+    return render_template(
+        "event_detail.html",
+        event=event,
+        raw_json=raw_json,
+        archived=True,
+        archived_day=day,
     )
 
 

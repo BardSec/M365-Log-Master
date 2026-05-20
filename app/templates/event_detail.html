@@ -3,14 +3,28 @@
 
 {% block content %}
 <div class="mb-3">
+  {% if archived %}
+  <a href="{{ url_for('pages.archive_day', day_str=archived_day) }}"
+     class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>Back to Archive {{ archived_day }}
+  </a>
+  {% else %}
   <a href="{{ url_for('pages.search') }}" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left me-1"></i>Back to Search
   </a>
+  {% endif %}
 </div>
 
-<h4 class="mb-3">
-  <i class="bi bi-file-earmark-text me-2 text-primary"></i>Sign-In Event Detail
-</h4>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">
+    <i class="bi bi-file-earmark-text me-2 text-primary"></i>Sign-In Event Detail
+  </h4>
+  {% if archived %}
+  <span class="badge bg-info text-dark">
+    <i class="bi bi-archive me-1"></i>Archived ({{ archived_day }})
+  </span>
+  {% endif %}
+</div>
 
 <div class="row g-3">
   <!-- Summary card -->

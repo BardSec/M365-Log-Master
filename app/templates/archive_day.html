@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}Archive {{ day }} – M365 Log Master{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('pages.archive_index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>All Archived Days
+  </a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">
+    <i class="bi bi-archive me-2 text-primary"></i>Archive: {{ day }}
+    <span class="badge bg-secondary ms-2">{{ "{:,}".format(record.rows_archived or 0) }} rows</span>
+  </h4>
+  <span class="badge bg-info text-dark">
+    <i class="bi bi-cloud me-1"></i>Read-only from R2
+  </span>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">
+  <i class="bi bi-exclamation-triangle-fill me-1"></i>
+  Failed to load archive: {{ error }}
+</div>
+{% endif %}
+
+<!-- Filter form -->
+<form method="get" class="card shadow-sm border-0 mb-3">
+  <div class="card-body py-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small text-muted mb-1">User principal name contains</label>
+        <input type="text" name="upn" value="{{ upn }}" class="form-control form-control-sm"
+               placeholder="e.g. alice@" autocomplete="off">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small text-muted mb-1">IP contains</label>
+        <input type="text" name="ip" value="{{ ip }}" class="form-control form-control-sm"
+               placeholder="e.g. 10.0." autocomplete="off">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small text-muted mb-1">Per page</label>
+        <select name="per_page" class="form-select form-select-sm">
+          {% for n in [25, 50, 100, 250] %}
+          <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3 text-end">
+        <button type="submit" class="btn btn-sm btn-primary">
+          <i class="bi bi-funnel me-1"></i>Filter
+        </button>
+        <a href="{{ url_for('pages.archive_day', day_str=day) }}"
+           class="btn btn-sm btn-outline-secondary">Clear</a>
+      </div>
+    </div>
+  </div>
+</form>
+
+<!-- Results -->
+<div class="card shadow-sm border-0">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span>
+      <i class="bi bi-list-ul me-1 text-secondary"></i>
+      Showing {{ rows | length }} of {{ "{:,}".format(total) }}
+      {% if upn or ip %}<span class="badge bg-info ms-1">filtered</span>{% endif %}
+    </span>
+    {% if pages > 1 %}
+    <span class="small text-muted">Page {{ page }} of {{ pages }}</span>
+    {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+      <thead class="table-secondary">
+        <tr>
+          <th>Time (UTC)</th>
+          <th>User</th>
+          <th>App</th>
+          <th>IP</th>
+          <th>Country</th>
+          <th>Type</th>
+          <th>Result</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="small text-nowrap font-monospace">{{ r.created_at | truncate(19, false, '') }}</td>
+          <td class="small text-truncate" style="max-width:220px" title="{{ r.user_principal_name }}">
+            {{ r.user_principal_name or '—' }}
+          </td>
+          <td class="small text-truncate" style="max-width:180px">{{ r.app_display_name or '—' }}</td>
+          <td class="small font-monospace">{{ r.ip_address or '—' }}</td>
+          <td class="small">{{ r.country or '—' }}</td>
+          <td class="small">
+            {% if r.signin_event_type %}
+              <span class="badge bg-light text-dark border">{{ r.signin_event_type }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if r.error_code == 0 or r.error_code is none %}
+              <span class="badge bg-success">OK</span>
+            {% else %}
+              <span class="badge bg-danger" title="{{ r.error_code }}">Fail</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('pages.archive_event', day_str=day, event_id=r.id) }}"
+               class="btn btn-sm btn-outline-secondary py-0 px-2">
+              <i class="bi bi-chevron-right"></i>
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">
+            No rows match the filter.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pages > 1 %}
+  <div class="card-footer bg-white d-flex justify-content-center">
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        {% set qs = '&upn=' ~ upn ~ '&ip=' ~ ip ~ '&per_page=' ~ per_page %}
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          <a class="page-link" href="?page={{ page - 1 }}{{ qs }}">Prev</a>
+        </li>
+        {% set start = [1, page - 2] | max %}
+        {% set end = [pages, page + 2] | min %}
+        {% if start > 1 %}
+          <li class="page-item"><a class="page-link" href="?page=1{{ qs }}">1</a></li>
+          {% if start > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+        {% endif %}
+        {% for p in range(start, end + 1) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+          <a class="page-link" href="?page={{ p }}{{ qs }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+        {% if end < pages %}
+          {% if end < pages - 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+          <li class="page-item"><a class="page-link" href="?page={{ pages }}{{ qs }}">{{ pages }}</a></li>
+        {% endif %}
+        <li class="page-item {% if page >= pages %}disabled{% endif %}">
+          <a class="page-link" href="?page={{ page + 1 }}{{ qs }}">Next</a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -38,6 +38,12 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if request.endpoint in ('pages.archive_index', 'pages.archive_day', 'pages.archive_event') %}active{% endif %}"
+             href="{{ url_for('pages.archive_index') }}">
+            <i class="bi bi-archive me-1"></i>Archive
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'pages.sync_status' %}active{% endif %}"
              href="{{ url_for('pages.sync_status') }}">
             <i class="bi bi-arrow-repeat me-1"></i>Sync
