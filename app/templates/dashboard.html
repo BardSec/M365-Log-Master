@@ -8,13 +8,30 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
   <h4 class="mb-0"><i class="bi bi-bar-chart-fill me-2 text-success"></i>Dashboard</h4>
-  <div class="d-flex gap-2">
-    {% for w, label in [('24h', 'Last 24 h'), ('7d', 'Last 7 d'), ('30d', 'Last 30 d')] %}
-      <a href="{{ url_for('pages.dashboard', window=w) }}"
-         class="btn btn-sm {{ 'btn-primary' if window == w else 'btn-outline-secondary' }}">
-        {{ label }}
-      </a>
-    {% endfor %}
+  <div class="d-flex flex-wrap gap-2">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Sign-in type">
+      {% for key, label in [
+          ('interactive', 'Interactive'),
+          ('noninteractive', 'Non-interactive'),
+          ('serviceprincipal', 'Service principal'),
+          ('managedidentity', 'Managed identity'),
+          ('users', 'All user'),
+          ('all', 'All types'),
+      ] %}
+        <a href="{{ url_for('pages.dashboard', window=window, types=key) }}"
+           class="btn {{ 'btn-success' if type_key == key else 'btn-outline-secondary' }}">
+          {{ label }}
+        </a>
+      {% endfor %}
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Time window">
+      {% for w, label in [('24h', 'Last 24 h'), ('7d', 'Last 7 d'), ('30d', 'Last 30 d')] %}
+        <a href="{{ url_for('pages.dashboard', window=w, types=type_key) }}"
+           class="btn {{ 'btn-primary' if window == w else 'btn-outline-secondary' }}">
+          {{ label }}
+        </a>
+      {% endfor %}
+    </div>
   </div>
 </div>
 

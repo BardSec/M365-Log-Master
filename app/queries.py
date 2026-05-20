@@ -132,22 +132,40 @@ def _window_clause(hours: int) -> tuple[str, dict]:
     return "created_at >= NOW() - INTERVAL ':h hours'", {"h": hours}
 
 
-def get_dashboard_metrics(hours: int = 24) -> dict:
-    """Aggregate metrics for the dashboard over the last `hours` hours."""
+def get_dashboard_metrics(
+    hours: int = 24,
+    signin_types: list[str] | None = None,
+) -> dict:
+    """
+    Aggregate metrics for the dashboard over the last `hours` hours.
+
+    `signin_types` filters by signin_event_type
+    (interactiveUser | nonInteractiveUser | servicePrincipal | managedIdentity).
+    None / empty list = no filter (all types).
+    """
     session = get_session()
     try:
         interval = f"{hours} hours"
+        params: dict[str, Any] = {"interval": interval}
+
+        # Build the optional event-type filter as a SQL fragment.
+        if signin_types:
+            type_clause = " AND signin_event_type = ANY(:types)"
+            params["types"] = list(signin_types)
+        else:
+            type_clause = ""
 
         # ── Totals ────────────────────────────────────────────────────────
         totals = session.execute(
-            text("""
+            text(f"""
                 SELECT
                     COUNT(*) AS total,
                     COUNT(*) FILTER (WHERE error_code != 0) AS failures
                 FROM sign_in_events
                 WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
+                {type_clause}
             """),
-            {"interval": interval},
+            params,
         ).mappings().first()
         total = int(totals["total"] or 0)
         failures = int(totals["failures"] or 0)
@@ -155,30 +173,32 @@ def get_dashboard_metrics(hours: int = 24) -> dict:
 
         # ── Top users by failures ──────────────────────────────────────────
         top_users_by_failures = session.execute(
-            text("""
+            text(f"""
                 SELECT user_principal_name, COUNT(*) AS cnt
                 FROM sign_in_events
                 WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
                   AND error_code != 0
+                  {type_clause}
                 GROUP BY user_principal_name
                 ORDER BY cnt DESC
                 LIMIT 10
             """),
-            {"interval": interval},
+            params,
         ).mappings().all()
 
         # ── Top IPs by failures ────────────────────────────────────────────
         top_ips_by_failures = session.execute(
-            text("""
+            text(f"""
                 SELECT ip_address, COUNT(*) AS cnt
                 FROM sign_in_events
                 WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
                   AND error_code != 0
+                  {type_clause}
                 GROUP BY ip_address
                 ORDER BY cnt DESC
                 LIMIT 10
             """),
-            {"interval": interval},
+            params,
         ).mappings().all()
 
         # ── Sign-ins over time (hourly buckets) ────────────────────────────
@@ -197,10 +217,11 @@ def get_dashboard_metrics(hours: int = 24) -> dict:
                     COUNT(*) FILTER (WHERE error_code != 0) AS failures
                 FROM sign_in_events
                 WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
+                {type_clause}
                 GROUP BY bucket
                 ORDER BY bucket
             """),
-            {"interval": interval},
+            params,
         ).mappings().all()
 
         return {

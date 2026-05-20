@@ -11,7 +11,17 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+GRAPH_BASE = "https://graph.microsoft.com/beta"
+
+# All four sign-in event categories. The OData filter
+# `signInEventTypes/any(t: t eq '...')` is documented only on /beta;
+# without this filter the endpoint returns interactive user sign-ins only.
+SIGNIN_EVENT_TYPES = (
+    "interactiveUser",
+    "nonInteractiveUser",
+    "servicePrincipal",
+    "managedIdentity",
+)
 
 # Fields we select from Graph to keep payloads small
 SIGNIN_SELECT_FIELDS = ",".join(
@@ -32,6 +42,7 @@ SIGNIN_SELECT_FIELDS = ",".join(
         "riskDetail",
         "riskLevelAggregated",
         "isInteractive",
+        "signInEventTypes",
     ]
 )
 
@@ -166,10 +177,14 @@ class GraphClient:
         from_str = _fmt_dt(from_dt)
         to_str = _fmt_dt(to_dt)
 
+        type_clauses = " or ".join(
+            f"t eq '{t}'" for t in SIGNIN_EVENT_TYPES
+        )
         url = f"{GRAPH_BASE}/auditLogs/signIns"
         params = {
             "$filter": (
-                f"createdDateTime ge {from_str} and createdDateTime lt {to_str}"
+                f"createdDateTime ge {from_str} and createdDateTime lt {to_str} "
+                f"and signInEventTypes/any(t: {type_clauses})"
             ),
             "$select": SIGNIN_SELECT_FIELDS,
             "$top": str(page_size),

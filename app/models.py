@@ -68,6 +68,9 @@ class SignInEvent(Base):
     error_code: Mapped[int | None] = mapped_column(Integer)
     country: Mapped[str | None] = mapped_column(String(128))
 
+    # Sign-in event type: interactiveUser | nonInteractiveUser | servicePrincipal | managedIdentity
+    signin_event_type: Mapped[str | None] = mapped_column(String(32))
+
     # Full-text search vector (populated by DB trigger / manual update)
     search_vector: Mapped[str | None] = mapped_column(
         Text, nullable=True
@@ -86,6 +89,7 @@ class SignInEvent(Base):
         Index("ix_signin_app", "app_display_name"),
         Index("ix_signin_error_code", "error_code"),
         Index("ix_signin_country", "country"),
+        Index("ix_signin_event_type", "signin_event_type"),
     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -107,6 +111,7 @@ class SignInEvent(Base):
             "risk_level_aggregated": self.risk_level_aggregated,
             "error_code": self.error_code,
             "country": self.country,
+            "signin_event_type": self.signin_event_type,
         }
 
 

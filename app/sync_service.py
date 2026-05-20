@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from .extensions import get_session
-from .graph_client import GraphClient
+from .graph_client import SIGNIN_EVENT_TYPES, GraphClient
 from .models import SignInEvent, SyncCursor, SyncLog
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,28 @@ def _parse_dt(value: str | None) -> datetime | None:
             return datetime.strptime(value, fmt)
         except ValueError:
             continue
+    return None
+
+
+def _primary_event_type(raw: dict) -> str | None:
+    """
+    Pick the primary classifier from Graph's signInEventTypes array.
+
+    The array can contain auxiliary tags like 'refreshToken' alongside the
+    primary category. We return the first value that matches one of the four
+    known top-level categories. Falls back to isInteractive if the array is
+    missing (older payloads / v1.0 compatibility).
+    """
+    types = raw.get("signInEventTypes") or []
+    if isinstance(types, list):
+        for t in types:
+            if t in SIGNIN_EVENT_TYPES:
+                return t
+    is_interactive = raw.get("isInteractive")
+    if is_interactive is True:
+        return "interactiveUser"
+    if is_interactive is False:
+        return "nonInteractiveUser"
     return None
 
 
@@ -64,6 +86,7 @@ def _coerce_event(raw: dict) -> dict[str, Any]:
         risk_level_aggregated=raw.get("riskLevelAggregated"),
         error_code=error_code,
         country=country,
+        signin_event_type=_primary_event_type(raw),
         raw_event=raw,
     )
 

@@ -157,12 +157,33 @@ def event_detail(event_id: str):
     return render_template("event_detail.html", event=event, raw_json=raw_json)
 
 
+SIGNIN_TYPE_FILTERS = {
+    "interactive": ["interactiveUser"],
+    "noninteractive": ["nonInteractiveUser"],
+    "serviceprincipal": ["servicePrincipal"],
+    "managedidentity": ["managedIdentity"],
+    "users": ["interactiveUser", "nonInteractiveUser"],
+    "all": [
+        "interactiveUser",
+        "nonInteractiveUser",
+        "servicePrincipal",
+        "managedIdentity",
+    ],
+}
+
+
 @bp.route("/dashboard")
 @login_required
 def dashboard():
     window = request.args.get("window", "24h")
     hours = _hours_from_window(window)
-    metrics = get_dashboard_metrics(hours=hours)
+
+    type_key = request.args.get("types", "interactive")
+    if type_key not in SIGNIN_TYPE_FILTERS:
+        type_key = "interactive"
+    signin_types = SIGNIN_TYPE_FILTERS[type_key]
+
+    metrics = get_dashboard_metrics(hours=hours, signin_types=signin_types)
     anomalies = get_anomalies(hours=hours)
     return render_template(
         "dashboard.html",
@@ -170,6 +191,7 @@ def dashboard():
         anomalies=anomalies,
         window=window,
         hours=hours,
+        type_key=type_key,
     )
 
 

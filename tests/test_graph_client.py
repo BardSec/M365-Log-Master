@@ -72,11 +72,11 @@ def test_get_returns_on_200(requests_mock):
     _mock_token(client)
 
     requests_mock.get(
-        "https://graph.microsoft.com/v1.0/auditLogs/signIns",
+        "https://graph.microsoft.com/beta/auditLogs/signIns",
         json={"value": [{"id": "evt1"}]},
         status_code=200,
     )
-    data = client._get("https://graph.microsoft.com/v1.0/auditLogs/signIns")
+    data = client._get("https://graph.microsoft.com/beta/auditLogs/signIns")
     assert data["value"][0]["id"] == "evt1"
 
 
@@ -90,13 +90,13 @@ def test_get_retries_on_429(requests_mock):
         {"status_code": 200, "json": {"value": [{"id": "evt2"}]}},
     ]
     requests_mock.get(
-        "https://graph.microsoft.com/v1.0/auditLogs/signIns",
+        "https://graph.microsoft.com/beta/auditLogs/signIns",
         [
             {"status_code": 429, "headers": {"Retry-After": "0"}, "json": {}},
             {"status_code": 200, "json": {"value": [{"id": "evt2"}]}},
         ],
     )
-    data = client._get("https://graph.microsoft.com/v1.0/auditLogs/signIns")
+    data = client._get("https://graph.microsoft.com/beta/auditLogs/signIns")
     assert data["value"][0]["id"] == "evt2"
 
 
@@ -106,7 +106,7 @@ def test_fetch_follows_next_link(requests_mock):
     client = _make_client()
     _mock_token(client)
 
-    url = "https://graph.microsoft.com/v1.0/auditLogs/signIns"
+    url = "https://graph.microsoft.com/beta/auditLogs/signIns"
     next_url = url + "?$skiptoken=abc"
 
     requests_mock.get(
@@ -135,7 +135,7 @@ def test_fetch_empty_result(requests_mock):
     _mock_token(client)
 
     requests_mock.get(
-        "https://graph.microsoft.com/v1.0/auditLogs/signIns",
+        "https://graph.microsoft.com/beta/auditLogs/signIns",
         json={"value": []},
     )
 
