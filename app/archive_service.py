@@ -142,8 +142,11 @@ def archive_day(cfg, day: dt.date) -> dict:
         )
         session.commit()
 
-        # Build the gzipped payload by streaming rows through gzip.
-        payload, row_count = _build_gzip_payload(_stream_rows_for_day(session, day))
+        # Materialize the day's rows so we can both gzip-upload them AND
+        # feed them to the search index. Memory cost is bounded by daily
+        # volume (~500 MB worst-case at 15x interactive volume).
+        day_rows = list(_stream_rows_for_day(session, day))
+        payload, row_count = _build_gzip_payload([dict(r) for r in day_rows])
 
         if row_count == 0:
             logger.info("archive: no rows for %s; skipping upload", day)
@@ -173,6 +176,26 @@ def archive_day(cfg, day: dt.date) -> dict:
             "archive: uploaded %s (%d rows, %d bytes gzipped) to %s",
             day, row_count, bytes_uploaded, key,
         )
+
+        # Update the search index. Failure here must not block archival —
+        # the index can always be rebuilt from R2 later.
+        try:
+            from . import archive_index
+
+            # The gzip writer strips pk; we still have it on day_rows.
+            # Re-serialize created_at as ISO so index_day's parser handles
+            # it the same way as data loaded back from R2.
+            indexable = []
+            for r in day_rows:
+                rr = dict(r)
+                rr.pop("pk", None)
+                ts = rr.get("created_at")
+                if hasattr(ts, "isoformat"):
+                    rr["created_at"] = ts.isoformat()
+                indexable.append(rr)
+            archive_index.index_day(cfg, day, indexable)
+        except Exception:
+            logger.exception("archive: failed to update DuckDB index for %s", day)
 
         # Delete archived rows from Postgres. Done in chunks to keep the
         # transaction short and let autovacuum keep up.

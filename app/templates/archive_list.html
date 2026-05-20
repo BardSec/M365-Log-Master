@@ -6,10 +6,20 @@
   <h4 class="mb-0">
     <i class="bi bi-archive-fill me-2 text-primary"></i>R2 Archive
   </h4>
-  <a href="{{ url_for('pages.sync_status') }}" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-gear me-1"></i>Sync &amp; Archive Status
-  </a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('pages.archive_search') }}" class="btn btn-sm btn-primary">
+      <i class="bi bi-search me-1"></i>Search Archive
+    </a>
+    <button class="btn btn-sm btn-outline-secondary" id="rebuildIndexBtn" onclick="rebuildIndex()">
+      <i class="bi bi-arrow-clockwise me-1"></i>Rebuild Index
+    </button>
+    <a href="{{ url_for('pages.sync_status') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-gear me-1"></i>Sync &amp; Archive Status
+    </a>
+  </div>
 </div>
+
+<div id="rebuildResult" class="alert d-none mb-3" role="alert"></div>
 
 {% if not archive_configured %}
 <div class="alert alert-warning">
@@ -82,5 +92,41 @@
   Each row corresponds to one gzipped JSON Lines file in R2 at
   <code>signins/YYYY/MM/YYYY-MM-DD.jsonl.gz</code>. The "Browse" view fetches the file
   on demand and caches it in memory; the data is not re-imported into Postgres.
+  Cross-archive <strong>Search</strong> hits a local DuckDB index built from the
+  archives — rebuild it from scratch with <strong>Rebuild Index</strong> if it's ever lost.
 </p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function rebuildIndex() {
+  const btn = document.getElementById('rebuildIndexBtn');
+  const result = document.getElementById('rebuildResult');
+  if (!confirm('Rebuild the search index from R2? This walks every archived day; takes a few minutes for ~year of data.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Rebuilding…';
+  result.className = 'alert d-none';
+
+  try {
+    const resp = await fetch('/api/archive-rebuild-index', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.status === 202) {
+      result.className = 'alert alert-info mb-3';
+      result.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Rebuild running in background. Refresh in a few minutes — the Search page will show updated stats once it finishes.';
+    } else if (resp.status === 409) {
+      result.className = 'alert alert-warning mb-3';
+      result.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Rebuild already in progress.';
+    } else {
+      result.className = 'alert alert-danger mb-3';
+      result.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || 'Unknown error');
+    }
+  } catch (e) {
+    result.className = 'alert alert-danger mb-3';
+    result.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Request error: ' + e;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Rebuild Index';
+  }
+}
+</script>
 {% endblock %}

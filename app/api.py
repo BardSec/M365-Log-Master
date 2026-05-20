@@ -15,6 +15,7 @@ from .queries import (
     get_new_ips_per_user,
     search_events,
 )
+from .archive_index import rebuild_from_r2 as rebuild_archive_index
 from .archive_service import get_archive_status, run_archive_sweep
 from .sync_service import get_last_sync_info, get_sync_history, run_sync
 
@@ -208,3 +209,33 @@ def api_archive_now():
 def api_archive_status():
     cfg = current_app.config["APP_CONFIG"]
     return jsonify(get_archive_status(cfg))
+
+
+_rebuild_lock = threading.Lock()
+
+
+@api.post("/archive-rebuild-index")
+@login_required
+def api_archive_rebuild_index():
+    cfg = current_app.config["APP_CONFIG"]
+    if not cfg.archive_configured:
+        return (
+            jsonify({"status": "error", "error": "Archive not configured."}),
+            400,
+        )
+    if not _rebuild_lock.acquire(blocking=False):
+        return jsonify({"status": "running", "message": "Rebuild already in progress."}), 409
+
+    app = current_app._get_current_object()
+
+    def _run():
+        try:
+            with app.app_context():
+                rebuild_archive_index(cfg)
+        except Exception:
+            logger.exception("Index rebuild error")
+        finally:
+            _rebuild_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"}), 202

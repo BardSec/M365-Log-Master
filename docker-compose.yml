@@ -33,6 +33,7 @@ services:
       - ./app:/app/app
       - ./migrations:/app/migrations
       - ./alembic.ini:/app/alembic.ini
+      - ./data:/app/data
 
 volumes:
   postgres_data:

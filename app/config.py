@@ -50,6 +50,12 @@ class Config:
     ARCHIVE_ENABLED: bool = os.environ.get("ARCHIVE_ENABLED", "false").lower() == "true"
     ARCHIVE_HOT_DAYS: int = int(os.environ.get("ARCHIVE_HOT_DAYS", "35"))
 
+    # Local DuckDB file backing /admin/archive/search. Lives on a mounted
+    # volume so it survives container rebuilds; can be rebuilt from R2.
+    ARCHIVE_INDEX_PATH: str = os.environ.get(
+        "ARCHIVE_INDEX_PATH", "/app/data/archive_index.duckdb"
+    )
+
     @property
     def graph_configured(self) -> bool:
         return bool(self.TENANT_ID and self.CLIENT_ID and self.CLIENT_SECRET)

@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Search Archive – M365 Log Master{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('pages.archive_index') }}" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-arrow-left me-1"></i>All Archived Days
+  </a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">
+    <i class="bi bi-search me-2 text-primary"></i>Search Archive
+  </h4>
+  <span class="badge bg-info text-dark">
+    {{ "{:,}".format(stats.rows) }} rows indexed
+    {% if stats.earliest %}<span class="ms-1">({{ stats.earliest }} → {{ stats.latest }})</span>{% endif %}
+  </span>
+</div>
+
+{% if stats.rows == 0 %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  The archive index is empty. Go to <a href="{{ url_for('pages.archive_index') }}">the archive list</a>
+  and click <strong>Rebuild index</strong>, or wait for the next nightly archive sweep.
+</div>
+{% endif %}
+
+<form method="get" class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-12 col-md-6 col-lg-4">
+        <label class="form-label small fw-semibold">Keyword (user / app / IP)</label>
+        <input class="form-control form-control-sm" name="q" value="{{ q or '' }}" placeholder="Search…" autocomplete="off">
+      </div>
+      <div class="col-12 col-md-6 col-lg-4">
+        <label class="form-label small fw-semibold">User Principal Name</label>
+        <input class="form-control form-control-sm" name="upn" value="{{ upn or '' }}" placeholder="user@domain.com" autocomplete="off">
+      </div>
+      <div class="col-12 col-md-6 col-lg-4">
+        <label class="form-label small fw-semibold">IP Address</label>
+        <input class="form-control form-control-sm" name="ip" value="{{ ip or '' }}" placeholder="1.2.3.4" autocomplete="off">
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+        <label class="form-label small fw-semibold">App</label>
+        <input class="form-control form-control-sm" name="app" value="{{ app or '' }}" placeholder="Microsoft Teams" autocomplete="off">
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small fw-semibold">Country</label>
+        <input class="form-control form-control-sm" name="country" value="{{ country or '' }}" placeholder="US">
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small fw-semibold">Error code</label>
+        <input class="form-control form-control-sm" name="error_code" value="{{ error_code or '' }}" placeholder="0">
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small fw-semibold">Type</label>
+        <select class="form-select form-select-sm" name="type">
+          <option value="">(any)</option>
+          {% for t in ['interactiveUser', 'nonInteractiveUser', 'servicePrincipal', 'managedIdentity'] %}
+            <option value="{{ t }}" {% if signin_type == t %}selected{% endif %}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-3">
+        <label class="form-label small fw-semibold">From (UTC date)</label>
+        <input class="form-control form-control-sm" type="date" name="from" value="{{ date_from_str or '' }}">
+      </div>
+      <div class="col-6 col-md-3 col-lg-3">
+        <label class="form-label small fw-semibold">To (UTC date)</label>
+        <input class="form-control form-control-sm" type="date" name="to" value="{{ date_to_str or '' }}">
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small fw-semibold">Per page</label>
+        <select class="form-select form-select-sm" name="per_page">
+          {% for n in [25, 50, 100, 250] %}
+          <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-auto d-flex align-items-end gap-2 ms-auto">
+        <button class="btn btn-sm btn-primary" type="submit">
+          <i class="bi bi-search me-1"></i>Search
+        </button>
+        <a href="{{ url_for('pages.archive_search') }}" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-x-circle me-1"></i>Clear
+        </a>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% if results is not none %}
+  {% if results.results %}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted small">
+      <strong>{{ "{:,}".format(results.total) }}</strong> matches
+      &middot; showing page {{ results.page }} of {{ results.pages }}
+      <span class="ms-2 text-muted">({{ "%.2f s" | format(elapsed) }})</span>
+    </span>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle">
+        <thead class="table-secondary">
+          <tr>
+            <th>Time (UTC)</th>
+            <th>User</th>
+            <th>App</th>
+            <th>IP</th>
+            <th>Country</th>
+            <th>Type</th>
+            <th>Result</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ev in results.results %}
+          <tr>
+            <td class="text-nowrap small font-monospace">{{ ev.created_at | string | truncate(19, false, '') }}</td>
+            <td class="small text-truncate" style="max-width:240px" title="{{ ev.user_principal_name }}">
+              {{ ev.user_principal_name or '—' }}
+            </td>
+            <td class="small text-truncate" style="max-width:180px">{{ ev.app_display_name or '—' }}</td>
+            <td class="small font-monospace">{{ ev.ip_address or '—' }}</td>
+            <td class="small">{{ ev.country or '—' }}</td>
+            <td class="small">
+              {% if ev.signin_event_type %}
+                <span class="badge bg-light text-dark border">{{ ev.signin_event_type }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="small">
+              {% if ev.error_code == 0 or ev.error_code is none %}
+                <span class="badge bg-success">OK</span>
+              {% else %}
+                <span class="badge bg-danger" title="{{ ev.error_code }}">Fail</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <a href="{{ url_for('pages.archive_event', day_str=ev.day, event_id=ev.id) }}"
+                 class="btn btn-sm btn-outline-secondary py-0 px-2">
+                <i class="bi bi-chevron-right"></i>
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if results.pages > 1 %}
+    <div class="card-footer bg-white d-flex justify-content-center">
+      <nav>
+        <ul class="pagination pagination-sm mb-0">
+          {% set qs = '' %}
+          {% for k, v in request.args.items() %}{% if k != 'page' %}{% set qs = qs ~ '&' ~ k ~ '=' ~ v %}{% endif %}{% endfor %}
+          <li class="page-item {% if results.page <= 1 %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ results.page - 1 }}{{ qs }}">Prev</a>
+          </li>
+          {% set start = [1, results.page - 2] | max %}
+          {% set end = [results.pages, results.page + 2] | min %}
+          {% if start > 1 %}
+            <li class="page-item"><a class="page-link" href="?page=1{{ qs }}">1</a></li>
+            {% if start > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+          {% endif %}
+          {% for p in range(start, end + 1) %}
+            <li class="page-item {% if p == results.page %}active{% endif %}">
+              <a class="page-link" href="?page={{ p }}{{ qs }}">{{ p }}</a>
+            </li>
+          {% endfor %}
+          {% if end < results.pages %}
+            {% if end < results.pages - 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+            <li class="page-item"><a class="page-link" href="?page={{ results.pages }}{{ qs }}">{{ results.pages }}</a></li>
+          {% endif %}
+          <li class="page-item {% if results.page >= results.pages %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ results.page + 1 }}{{ qs }}">Next</a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle me-1"></i>No archived events match your criteria.
+  </div>
+  {% endif %}
+{% else %}
+  <div class="alert alert-secondary">
+    <i class="bi bi-lightbulb me-1"></i>
+    Enter criteria above and press <strong>Search</strong>. The search runs against the local
+    DuckDB index built from R2 archives — queries are sub-second even at year-scale.
+  </div>
+{% endif %}
+{% endblock %}
