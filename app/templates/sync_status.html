@@ -86,6 +86,86 @@
 <!-- Sync result banner (populated by JS) -->
 <div id="syncResult" class="alert d-none mb-4" role="alert"></div>
 
+<!-- Archive (R2) status -->
+<div class="card shadow-sm border-0 mb-4">
+  <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-cloud-upload me-1 text-primary"></i>R2 Archive</span>
+    {% if archive.configured %}
+    <button class="btn btn-sm btn-outline-primary" id="archiveNowBtn" onclick="archiveNow()">
+      <i class="bi bi-play-fill me-1"></i>Archive Now
+    </button>
+    {% else %}
+    <span class="badge bg-secondary">Not configured</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if not archive.configured %}
+      <p class="text-muted small mb-0">
+        Set <code>ARCHIVE_ENABLED=true</code> and the <code>R2_*</code> env vars to enable.
+      </p>
+    {% else %}
+    <div class="row g-3">
+      <div class="col-12 col-md-6">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <th class="text-muted fw-normal" style="width:50%">Hot window</th>
+              <td>{{ archive.hot_days }} days</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Rows in Postgres</th>
+              <td>{{ "{:,}".format(archive.hot_rows) }}</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Earliest hot row</th>
+              <td>{{ archive.hot_earliest | truncate(19, false, '') if archive.hot_earliest else '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="col-12 col-md-6">
+        <table class="table table-sm mb-0">
+          <tbody>
+            {% if archive.totals %}
+            <tr>
+              <th class="text-muted fw-normal" style="width:50%">Archived days</th>
+              <td>{{ archive.totals.days }}</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">Archived rows</th>
+              <td>{{ "{:,}".format(archive.totals.rows | int) }}</td>
+            </tr>
+            <tr>
+              <th class="text-muted fw-normal">R2 storage used</th>
+              <td>
+                {% set b = archive.totals.bytes | int %}
+                {% if b > 1073741824 %}{{ "%.2f GB" | format(b / 1073741824) }}
+                {% elif b > 1048576 %}{{ "%.1f MB" | format(b / 1048576) }}
+                {% elif b > 1024 %}{{ "%.1f KB" | format(b / 1024) }}
+                {% else %}{{ b }} B{% endif %}
+              </td>
+            </tr>
+            {% endif %}
+            {% if archive.last_run %}
+            <tr>
+              <th class="text-muted fw-normal">Last archive run</th>
+              <td>
+                <span class="badge {% if archive.last_run.status == 'success' %}bg-success{% elif archive.last_run.status == 'in_progress' %}bg-info{% else %}bg-danger{% endif %}">
+                  {{ archive.last_run.status }}
+                </span>
+                {{ archive.last_run.finished_at | string | truncate(19, false, '') if archive.last_run.finished_at else '' }}
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div id="archiveResult" class="alert d-none mt-3 mb-0" role="alert"></div>
+    {% endif %}
+  </div>
+</div>
+
 <!-- History table -->
 <div class="card shadow-sm border-0">
   <div class="card-header bg-white fw-semibold">
@@ -172,6 +252,37 @@ async function syncNow() {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Sync Now';
+  }
+}
+
+async function archiveNow() {
+  const btn = document.getElementById('archiveNowBtn');
+  const resultDiv = document.getElementById('archiveResult');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Archiving…';
+  resultDiv.className = 'alert d-none';
+
+  try {
+    const resp = await fetch('/api/archive-now', { method: 'POST' });
+    const data = await resp.json();
+
+    if (resp.status === 409) {
+      resultDiv.className = 'alert alert-warning mt-3 mb-0';
+      resultDiv.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Archive sweep already in progress.';
+    } else if (resp.status === 202) {
+      resultDiv.className = 'alert alert-info mt-3 mb-0';
+      resultDiv.innerHTML = '<i class="bi bi-cloud-upload me-1"></i>Archive sweep running in background. This may take a few minutes for the initial backfill — refresh in a bit.';
+      setTimeout(() => location.reload(), 10000);
+    } else {
+      resultDiv.className = 'alert alert-danger mt-3 mb-0';
+      resultDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>' + (data.error || 'Unknown error');
+    }
+  } catch (e) {
+    resultDiv.className = 'alert alert-danger mt-3 mb-0';
+    resultDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i>Request error: ' + e;
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Archive Now';
   }
 }
 

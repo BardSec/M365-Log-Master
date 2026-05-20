@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,24 @@ def _make_sync_job(app):
     return _job
 
 
+def _make_archive_job(app):
+    """Return a closure that runs the archive sweep inside the Flask app context."""
+    def _job():
+        with app.app_context():
+            from .archive_service import run_archive_sweep
+            from .config import Config
+
+            cfg = Config()
+            if not cfg.archive_configured:
+                logger.info("Scheduled archive skipped – ARCHIVE_ENABLED=false or R2 not configured.")
+                return
+            logger.info("Scheduled archive sweep starting.")
+            stats = run_archive_sweep(cfg)
+            logger.info("Scheduled archive sweep finished: %s", stats)
+
+    return _job
+
+
 def start_scheduler(app) -> BackgroundScheduler:
     global _scheduler
     from .config import Config
@@ -58,9 +77,19 @@ def start_scheduler(app) -> BackgroundScheduler:
         max_instances=1,
         coalesce=True,
     )
+    _scheduler.add_job(
+        _make_archive_job(app),
+        trigger=CronTrigger(hour=3, minute=15),  # 03:15 UTC nightly
+        id="archive_sweep",
+        name="R2 Archive Sweep",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     _scheduler.start()
     logger.info(
-        "Scheduler started – sync job will run every %d minutes.", interval_minutes
+        "Scheduler started – sync every %d min; archive sweep at 03:15 UTC.",
+        interval_minutes,
     )
     return _scheduler
 

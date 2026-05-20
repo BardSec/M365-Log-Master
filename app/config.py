@@ -40,6 +40,26 @@ class Config:
     BASIC_AUTH_USERNAME: str = os.environ.get("BASIC_AUTH_USERNAME", "")
     BASIC_AUTH_PASSWORD: str = os.environ.get("BASIC_AUTH_PASSWORD", "")
 
+    # Cloudflare R2 archive (offload sign_in_events older than ARCHIVE_HOT_DAYS).
+    # Bucket-blank or ARCHIVE_ENABLED=false disables archiving.
+    R2_ACCOUNT_ID: str = os.environ.get("R2_ACCOUNT_ID", "")
+    R2_ACCESS_KEY_ID: str = os.environ.get("R2_ACCESS_KEY_ID", "")
+    R2_SECRET_ACCESS_KEY: str = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+    R2_BUCKET: str = os.environ.get("R2_BUCKET", "")
+    R2_ENDPOINT: str = os.environ.get("R2_ENDPOINT", "")
+    ARCHIVE_ENABLED: bool = os.environ.get("ARCHIVE_ENABLED", "false").lower() == "true"
+    ARCHIVE_HOT_DAYS: int = int(os.environ.get("ARCHIVE_HOT_DAYS", "35"))
+
     @property
     def graph_configured(self) -> bool:
         return bool(self.TENANT_ID and self.CLIENT_ID and self.CLIENT_SECRET)
+
+    @property
+    def archive_configured(self) -> bool:
+        return bool(
+            self.ARCHIVE_ENABLED
+            and self.R2_BUCKET
+            and self.R2_ENDPOINT
+            and self.R2_ACCESS_KEY_ID
+            and self.R2_SECRET_ACCESS_KEY
+        )

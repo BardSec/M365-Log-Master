@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import (
     BigInteger,
     DateTime,
@@ -127,6 +128,25 @@ class SyncCursor(Base):
     last_event_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=False), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ArchiveLog(Base):
+    """One row per day that has been (or attempted to be) archived to R2."""
+
+    __tablename__ = "archive_log"
+
+    day: Mapped[datetime.date] = mapped_column(
+        sa.Date, primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String(32))  # success | error | in_progress
+    rows_archived: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bytes_uploaded: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    r2_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=False))
+    finished_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
     )
 
 

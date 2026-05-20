@@ -15,6 +15,7 @@ from .queries import (
     get_new_ips_per_user,
     search_events,
 )
+from .archive_service import get_archive_status, run_archive_sweep
 from .sync_service import get_last_sync_info, get_sync_history, run_sync
 
 logger = logging.getLogger(__name__)
@@ -161,3 +162,49 @@ def api_sync_status():
     info = get_last_sync_info()
     history = get_sync_history(limit=10)
     return jsonify({"cursor": info, "history": history})
+
+
+_archive_lock = threading.Lock()
+
+
+@api.post("/archive-now")
+@login_required
+def api_archive_now():
+    cfg = current_app.config["APP_CONFIG"]
+    if not cfg.archive_configured:
+        return (
+            jsonify({
+                "status": "error",
+                "error": "Archive not configured. Set R2_* env vars and ARCHIVE_ENABLED=true.",
+            }),
+            400,
+        )
+
+    max_days = _int(request.args.get("max_days"), 0) or None
+
+    if not _archive_lock.acquire(blocking=False):
+        return jsonify({"status": "running", "message": "Archive sweep already in progress."}), 409
+
+    app = current_app._get_current_object()
+
+    def _run():
+        try:
+            with app.app_context():
+                run_archive_sweep(cfg, max_days=max_days)
+        except Exception:
+            logger.exception("Manual archive error")
+        finally:
+            _archive_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return (
+        jsonify({"status": "started", "message": "Archive sweep started in background. Poll /api/archive-status for results."}),
+        202,
+    )
+
+
+@api.get("/archive-status")
+@login_required
+def api_archive_status():
+    cfg = current_app.config["APP_CONFIG"]
+    return jsonify(get_archive_status(cfg))

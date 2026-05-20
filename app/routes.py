@@ -17,6 +17,7 @@ from flask import (
 
 logger = logging.getLogger(__name__)
 
+from .archive_service import get_archive_status
 from .oauth import complete_auth_flow, login_required, start_auth_flow
 from .queries import get_anomalies, get_dashboard_metrics, get_event_by_id, search_events
 from .sync_service import get_last_sync_info, get_sync_history
@@ -198,9 +199,16 @@ def dashboard():
 @bp.route("/admin/sync-status")
 @login_required
 def sync_status():
+    cfg = current_app.config["APP_CONFIG"]
     info = get_last_sync_info()
     history = get_sync_history(limit=20)
-    return render_template("sync_status.html", info=info, history=history)
+    archive = get_archive_status(cfg)
+    return render_template(
+        "sync_status.html",
+        info=info,
+        history=history,
+        archive=archive,
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
