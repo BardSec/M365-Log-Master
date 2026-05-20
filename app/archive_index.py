@@ -32,7 +32,7 @@ _current_path: str | None = None
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS signins (
-    id                   VARCHAR PRIMARY KEY,
+    id                   VARCHAR NOT NULL,
     day                  DATE NOT NULL,
     created_at           TIMESTAMP NOT NULL,
     user_principal_name  VARCHAR,
@@ -44,9 +44,14 @@ CREATE TABLE IF NOT EXISTS signins (
     signin_event_type    VARCHAR
 );
 CREATE INDEX IF NOT EXISTS ix_signins_day ON signins(day);
+CREATE INDEX IF NOT EXISTS ix_signins_id  ON signins(id);
 CREATE INDEX IF NOT EXISTS ix_signins_upn ON signins(user_principal_name);
 CREATE INDEX IF NOT EXISTS ix_signins_ip  ON signins(ip_address);
 """
+# Note: no PRIMARY KEY on id. DuckDB doesn't refresh a PK index between a
+# DELETE and an INSERT in the same transaction, which broke our
+# delete-then-insert idempotency pattern. Uniqueness is enforced by the
+# caller (index_day deletes the whole day before inserting fresh rows).
 
 
 def _get_conn(cfg) -> duckdb.DuckDBPyConnection:

@@ -108,15 +108,19 @@ def test_search_filters_error_code_and_type(cfg):
 
 def test_search_keyword_hits_multiple_columns(cfg):
     day = dt.date(2026, 4, 5)
+    # Override the default 'alice@example.com' UPN so the keyword test
+    # only matches the fields we intend.
     rows = [
-        _row("a", day.isoformat(), 1, user_principal_name="alice@x.com"),
-        _row("b", day.isoformat(), 2, app_display_name="alice-portal"),
-        _row("c", day.isoformat(), 3, ip_address="10.0.0.99"),
+        _row("a", day.isoformat(), 1, user_principal_name="needle@x.com"),
+        _row("b", day.isoformat(), 2,
+             user_principal_name="bob@x.com", app_display_name="needle-portal"),
+        _row("c", day.isoformat(), 3,
+             user_principal_name="carol@x.com", ip_address="10.0.0.99"),
     ]
     archive_index.index_day(cfg, day, rows)
 
-    res = archive_index.search(cfg, keyword="alice")
-    # 'alice' matches UPN of 'a' and app name of 'b'
+    res = archive_index.search(cfg, keyword="needle")
+    # 'needle' matches UPN of 'a' and app name of 'b'
     assert res["total"] == 2
     assert {r["id"] for r in res["results"]} == {"a", "b"}
 
