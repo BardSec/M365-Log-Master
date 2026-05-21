@@ -64,7 +64,9 @@
   <div class="col-6 col-md-3">
     <div class="card text-center shadow-sm h-100 border-0">
       <div class="card-body">
-        <div class="fs-2 fw-bold text-info">{{ anomalies | length }}</div>
+        <div class="fs-2 fw-bold text-info" id="anomalyCount">
+          <span class="spinner-border spinner-border-sm align-baseline" role="status"></span>
+        </div>
         <div class="small text-muted">Anomalies Detected</div>
       </div>
     </div>
@@ -137,47 +139,24 @@
     </div>
   </div>
 
-  <!-- Anomalies table -->
+  <!-- Anomalies table (loaded async) -->
   <div class="col-12 col-md-6">
     <div class="card shadow-sm h-100 border-0">
-      <div class="card-header bg-white fw-semibold d-flex justify-content-between">
+      <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
         <span><i class="bi bi-exclamation-triangle me-1 text-danger"></i>Recent Anomalies</span>
-        <span class="badge bg-danger">{{ anomalies | length }}</span>
+        <span id="anomalyBadge" class="badge bg-secondary">…</span>
       </div>
-      <div class="card-body p-0" style="max-height:320px; overflow-y:auto;">
-        {% if anomalies %}
-        <ul class="list-group list-group-flush">
-          {% for a in anomalies[:20] %}
-          <li class="list-group-item px-3 py-2">
-            <div class="d-flex justify-content-between align-items-start">
-              <div>
-                <span class="badge
-                  {% if a.reason == 'impossible_travel' %}bg-danger
-                  {% elif a.reason == 'repeated_ca_failure' %}bg-warning text-dark
-                  {% elif a.reason == 'unfamiliar_country' %}bg-info text-dark
-                  {% else %}bg-secondary{% endif %}
-                  me-1">{{ a.reason | replace('_', ' ') | title }}</span>
-                <a href="{{ url_for('pages.event_detail', event_id=a.id) }}"
-                   class="small text-truncate d-inline-block" style="max-width:200px">
-                  {{ a.user_principal_name or '(unknown)' }}
-                </a>
-              </div>
-              <span class="text-muted" style="font-size:0.7rem">
-                {{ a.created_at | string | truncate(16, false, '') if a.created_at else '' }}
-              </span>
+      <div class="card-body p-0" style="max-height:320px; overflow-y:auto;" id="anomalyBody">
+        <div class="p-3 text-muted small d-flex align-items-center gap-2" id="anomalyLoading">
+          <div class="spinner-border spinner-border-sm" role="status"></div>
+          <div>
+            <div>Loading anomaly heuristics…</div>
+            <div class="text-muted" style="font-size:0.7rem">
+              First load after ~5 min idle can take 10–15 sec
+              (30-day historical scan). Subsequent loads are cached.
             </div>
-            <div class="text-muted small mt-1">
-              {{ a.ip_address or '' }}
-              {% if a.country %} &bull; {{ a.country }}{% endif %}
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-          <div class="p-3 text-muted small">
-            <i class="bi bi-check-circle-fill text-success me-1"></i>No anomalies in window.
           </div>
-        {% endif %}
+        </div>
       </div>
     </div>
   </div>
@@ -186,6 +165,104 @@
 
 {% block scripts %}
 <script>
+// ── Async anomaly loader ────────────────────────────────────────────────────
+(function () {
+  const REASON_BADGES = {
+    impossible_travel: 'bg-danger',
+    repeated_ca_failure: 'bg-warning text-dark',
+    unfamiliar_country: 'bg-info text-dark',
+    new_ip_for_user: 'bg-secondary',
+  };
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  function reasonLabel(reason) {
+    return (reason || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+
+  function renderAnomalies(anomalies, cacheAgeSeconds) {
+    const count = anomalies.length;
+    document.getElementById('anomalyCount').textContent = count;
+
+    const badge = document.getElementById('anomalyBadge');
+    badge.textContent = count;
+    badge.className = 'badge ' + (count > 0 ? 'bg-danger' : 'bg-success');
+
+    const body = document.getElementById('anomalyBody');
+    if (count === 0) {
+      body.innerHTML =
+        '<div class="p-3 text-muted small">' +
+        '<i class="bi bi-check-circle-fill text-success me-1"></i>' +
+        'No anomalies in window.</div>';
+      return;
+    }
+
+    const items = anomalies.slice(0, 20).map(a => {
+      const cls = REASON_BADGES[a.reason] || 'bg-secondary';
+      const detailUrl = '/event/' + encodeURIComponent(a.id || '');
+      const t = a.created_at ? String(a.created_at).slice(0, 16) : '';
+      const loc = [a.ip_address || '', a.country ? '• ' + a.country : '']
+        .filter(Boolean).join(' ');
+      return (
+        '<li class="list-group-item px-3 py-2">' +
+          '<div class="d-flex justify-content-between align-items-start">' +
+            '<div>' +
+              '<span class="badge ' + cls + ' me-1">' + escapeHtml(reasonLabel(a.reason)) + '</span>' +
+              '<a href="' + detailUrl + '" class="small text-truncate d-inline-block" style="max-width:200px">' +
+                escapeHtml(a.user_principal_name || '(unknown)') +
+              '</a>' +
+            '</div>' +
+            '<span class="text-muted" style="font-size:0.7rem">' + escapeHtml(t) + '</span>' +
+          '</div>' +
+          '<div class="text-muted small mt-1">' + escapeHtml(loc) + '</div>' +
+        '</li>'
+      );
+    }).join('');
+
+    let footer = '';
+    if (cacheAgeSeconds != null) {
+      const age = Math.round(cacheAgeSeconds);
+      const fresh = age < 60 ? age + 's' : Math.round(age / 60) + 'm';
+      footer = '<div class="text-muted small text-center py-1" style="font-size:0.7rem">' +
+               'cached ' + fresh + ' ago</div>';
+    }
+
+    body.innerHTML = '<ul class="list-group list-group-flush">' + items + '</ul>' + footer;
+  }
+
+  function renderError(msg) {
+    document.getElementById('anomalyCount').textContent = '?';
+    const badge = document.getElementById('anomalyBadge');
+    badge.textContent = 'err';
+    badge.className = 'badge bg-danger';
+    document.getElementById('anomalyBody').innerHTML =
+      '<div class="p-3 text-danger small">' +
+      '<i class="bi bi-exclamation-triangle-fill me-1"></i>Failed to load anomalies: ' +
+      escapeHtml(msg) + '</div>';
+  }
+
+  async function loadAnomalies() {
+    const window_ = '{{ window }}';
+    try {
+      const resp = await fetch('/api/dashboard/anomalies?window=' + encodeURIComponent(window_));
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error);
+      renderAnomalies(data.anomalies || [], data.cache_age_seconds);
+    } catch (e) {
+      renderError(e.message || String(e));
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', loadAnomalies);
+})();
+
+// ── Timeline chart (unchanged) ──────────────────────────────────────────────
 (function () {
   const timeline = {{ metrics.timeline | tojson }};
   if (!timeline.length) return;

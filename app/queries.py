@@ -5,13 +5,18 @@ All heavy lifting is done in PostgreSQL; Python only shapes the results.
 """
 from __future__ import annotations
 
+import logging
 import math
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import text
 
 from .extensions import get_session
+
+logger = logging.getLogger(__name__)
 
 # ─── Search ───────────────────────────────────────────────────────────────────
 
@@ -246,7 +251,36 @@ def get_dashboard_metrics(
 # ─── Anomaly detection ────────────────────────────────────────────────────────
 
 
-def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
+# Anomaly heuristics scan up to 30 days of historical data for the
+# "new IP" / "unfamiliar country" DISTINCT lookups — that's ~5s per call
+# at our current volume. Cache the result with a short TTL so every
+# dashboard refresh doesn't re-run the work.
+_ANOMALY_CACHE: dict[tuple[int, int], tuple[float, list[dict]]] = {}
+_ANOMALY_CACHE_TTL_SECONDS = 300  # 5 minutes
+_anomaly_cache_lock = threading.Lock()
+
+
+def get_anomalies_cache_age(hours: int = 24, lookback_days: int = 30) -> float | None:
+    """Return age-in-seconds of the cache entry for these params, or None."""
+    key = (hours, lookback_days)
+    with _anomaly_cache_lock:
+        entry = _ANOMALY_CACHE.get(key)
+    if entry is None:
+        return None
+    return time.time() - entry[0]
+
+
+def invalidate_anomaly_cache() -> None:
+    """Drop all cached anomaly results (e.g. after a manual sync)."""
+    with _anomaly_cache_lock:
+        _ANOMALY_CACHE.clear()
+
+
+def get_anomalies(
+    hours: int = 24,
+    lookback_days: int = 30,
+    use_cache: bool = True,
+) -> list[dict]:
     """
     Run all anomaly heuristics and return a combined list of flagged events.
     All queries run against the local DB – no Graph calls.
@@ -256,7 +290,18 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
     "new IP for user" heuristics, and non-interactive token refreshes
     create too much noise (they happen automatically from background
     clients regardless of the user's location/behavior).
+
+    Result is cached for `_ANOMALY_CACHE_TTL_SECONDS` per (hours,
+    lookback_days) key; pass use_cache=False to force a refresh.
     """
+    cache_key = (hours, lookback_days)
+    if use_cache:
+        with _anomaly_cache_lock:
+            entry = _ANOMALY_CACHE.get(cache_key)
+            if entry is not None and (time.time() - entry[0]) < _ANOMALY_CACHE_TTL_SECONDS:
+                return entry[1]
+
+    t_start = time.time()
     session = get_session()
     try:
         anomalies: list[dict] = []
@@ -405,7 +450,15 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
                     a["created_at"] = a["created_at"].isoformat()
                 unique.append(a)
 
-        return sorted(unique, key=lambda x: x.get("created_at") or "", reverse=True)
+        result = sorted(unique, key=lambda x: x.get("created_at") or "", reverse=True)
+        if use_cache:
+            with _anomaly_cache_lock:
+                _ANOMALY_CACHE[cache_key] = (time.time(), result)
+            logger.info(
+                "get_anomalies: computed and cached (%d entries) in %.2fs (key=%s)",
+                len(result), time.time() - t_start, cache_key,
+            )
+        return result
 
     finally:
         session.close()

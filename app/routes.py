@@ -198,16 +198,16 @@ def dashboard():
     t0 = _time.time()
     metrics = get_dashboard_metrics(hours=hours, signin_types=signin_types)
     t1 = _time.time()
-    anomalies = get_anomalies(hours=hours)
-    t2 = _time.time()
     logger.info(
-        "dashboard render: metrics=%.2fs anomalies=%.2fs total=%.2fs (window=%s types=%s)",
-        t1 - t0, t2 - t1, t2 - t0, window, type_key,
+        "dashboard render: metrics=%.2fs (window=%s types=%s) — anomalies loaded async",
+        t1 - t0, window, type_key,
     )
     return render_template(
         "dashboard.html",
         metrics=metrics,
-        anomalies=anomalies,
+        # anomalies fetched client-side via /api/dashboard/anomalies so the
+        # shell paints fast even when the 5-min cache is cold (~10s).
+        anomalies=None,
         window=window,
         hours=hours,
         type_key=type_key,

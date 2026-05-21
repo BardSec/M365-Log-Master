@@ -109,6 +109,27 @@ def api_dashboard():
         return jsonify({"error": str(exc)}), 500
 
 
+@api.get("/dashboard/anomalies")
+@login_required
+def api_dashboard_anomalies():
+    """Async endpoint the dashboard page calls after initial paint."""
+    from .queries import get_anomalies_cache_age
+
+    window = request.args.get("window", "24h")
+    hours = _hours_from_window(window)
+    lookback_days = _int(request.args.get("lookback_days"), 30)
+    try:
+        cache_age = get_anomalies_cache_age(hours, lookback_days)
+        anomalies = get_anomalies(hours=hours, lookback_days=lookback_days)
+        return jsonify({
+            "anomalies": anomalies,
+            "cache_age_seconds": cache_age,
+        })
+    except Exception as exc:
+        logger.exception("Dashboard anomalies error")
+        return jsonify({"error": str(exc)}), 500
+
+
 _sync_lock = threading.Lock()
 
 
