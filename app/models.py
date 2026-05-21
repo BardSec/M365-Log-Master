@@ -91,6 +91,11 @@ class SignInEvent(Base):
         Index("ix_signin_error_code", "error_code"),
         Index("ix_signin_country", "country"),
         Index("ix_signin_event_type", "signin_event_type"),
+        # Composite for anomaly heuristics' LAG window function
+        Index(
+            "ix_signin_type_upn_created",
+            "signin_event_type", "user_principal_name", "created_at",
+        ),
     )
 
     def to_dict(self) -> dict[str, Any]:

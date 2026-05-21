@@ -186,6 +186,7 @@ SIGNIN_TYPE_FILTERS = {
 @bp.route("/dashboard")
 @login_required
 def dashboard():
+    import time as _time
     window = request.args.get("window", "24h")
     hours = _hours_from_window(window)
 
@@ -194,8 +195,15 @@ def dashboard():
         type_key = "interactive"
     signin_types = SIGNIN_TYPE_FILTERS[type_key]
 
+    t0 = _time.time()
     metrics = get_dashboard_metrics(hours=hours, signin_types=signin_types)
+    t1 = _time.time()
     anomalies = get_anomalies(hours=hours)
+    t2 = _time.time()
+    logger.info(
+        "dashboard render: metrics=%.2fs anomalies=%.2fs total=%.2fs (window=%s types=%s)",
+        t1 - t0, t2 - t1, t2 - t0, window, type_key,
+    )
     return render_template(
         "dashboard.html",
         metrics=metrics,

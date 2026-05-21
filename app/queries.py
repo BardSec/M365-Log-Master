@@ -250,6 +250,12 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
     """
     Run all anomaly heuristics and return a combined list of flagged events.
     All queries run against the local DB – no Graph calls.
+
+    Scoped to signin_event_type='interactiveUser': service principal and
+    managed identity sign-ins don't make sense for "impossible travel" /
+    "new IP for user" heuristics, and non-interactive token refreshes
+    create too much noise (they happen automatically from background
+    clients regardless of the user's location/behavior).
     """
     session = get_session()
     try:
@@ -265,6 +271,7 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
                            app_display_name, country
                     FROM sign_in_events
                     WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
+                      AND signin_event_type = 'interactiveUser'
                       AND ip_address IS NOT NULL
                 ),
                 historical_ips AS (
@@ -272,6 +279,7 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
                     FROM sign_in_events
                     WHERE created_at < NOW() - CAST(:interval AS INTERVAL)
                       AND created_at >= NOW() - CAST(:lookback AS INTERVAL)
+                      AND signin_event_type = 'interactiveUser'
                       AND ip_address IS NOT NULL
                 )
                 SELECT r.id, r.created_at, r.user_principal_name,
@@ -297,6 +305,7 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
                            app_display_name, country
                     FROM sign_in_events
                     WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
+                      AND signin_event_type = 'interactiveUser'
                       AND country IS NOT NULL
                 ),
                 historical_countries AS (
@@ -304,6 +313,7 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
                     FROM sign_in_events
                     WHERE created_at < NOW() - CAST(:interval AS INTERVAL)
                       AND created_at >= NOW() - CAST(:lookback AS INTERVAL)
+                      AND signin_event_type = 'interactiveUser'
                       AND country IS NOT NULL
                 )
                 SELECT r.id, r.created_at, r.user_principal_name,
@@ -335,6 +345,7 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
                            LAG(ip_address)  OVER w AS prev_ip
                     FROM sign_in_events
                     WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
+                      AND signin_event_type = 'interactiveUser'
                       AND country IS NOT NULL
                     WINDOW w AS (
                         PARTITION BY user_principal_name
@@ -370,6 +381,7 @@ def get_anomalies(hours: int = 24, lookback_days: int = 30) -> list[dict]:
                     'repeated_ca_failure' AS reason
                 FROM sign_in_events
                 WHERE created_at >= NOW() - CAST(:interval AS INTERVAL)
+                  AND signin_event_type = 'interactiveUser'
                   AND conditional_access_status = 'failure'
                 GROUP BY user_principal_name
                 HAVING COUNT(*) >= 3
