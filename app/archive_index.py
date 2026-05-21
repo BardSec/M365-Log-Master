@@ -144,8 +144,14 @@ def index_day(cfg, day: dt.date, rows: list[dict]) -> int:
     return len(tuples)
 
 
-def search(
-    cfg,
+COLUMNS = [
+    "id", "day", "created_at", "user_principal_name", "user_display_name",
+    "app_display_name", "ip_address", "country", "error_code",
+    "signin_event_type",
+]
+
+
+def _build_where(
     *,
     keyword: str | None = None,
     user_principal_name: str | None = None,
@@ -156,12 +162,8 @@ def search(
     signin_event_type: str | None = None,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
-    page: int = 1,
-    per_page: int = 50,
-) -> dict:
-    """Run a search against the archive index. Returns paginated rows + total."""
-    conn = _get_conn(cfg)
-
+) -> tuple[str, list[Any]]:
+    """Build a parameterized WHERE clause from the search filters."""
     where: list[str] = []
     params: list[Any] = []
 
@@ -197,7 +199,20 @@ def search(
         kw = f"%{keyword}%"
         params.extend([kw, kw, kw, kw])
 
-    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+    return ((" WHERE " + " AND ".join(where)) if where else "", params)
+
+
+def search(
+    cfg,
+    *,
+    page: int = 1,
+    per_page: int = 50,
+    **filters,
+) -> dict:
+    """Run a search against the archive index. Returns paginated rows + total."""
+    conn = _get_conn(cfg)
+    where_sql, params = _build_where(**filters)
+    cols_sql = ", ".join(COLUMNS)
 
     with _conn_lock:
         total = conn.execute(
@@ -207,9 +222,7 @@ def search(
         offset = (page - 1) * per_page
         rows = conn.execute(
             f"""
-            SELECT id, day, created_at, user_principal_name, user_display_name,
-                   app_display_name, ip_address, country, error_code,
-                   signin_event_type
+            SELECT {cols_sql}
             FROM signins
             {where_sql}
             ORDER BY created_at DESC
@@ -218,12 +231,7 @@ def search(
             params,
         ).fetchall()
 
-    cols = [
-        "id", "day", "created_at", "user_principal_name", "user_display_name",
-        "app_display_name", "ip_address", "country", "error_code",
-        "signin_event_type",
-    ]
-    results = [dict(zip(cols, r)) for r in rows]
+    results = [dict(zip(COLUMNS, r)) for r in rows]
 
     return {
         "total": int(total),
@@ -232,6 +240,34 @@ def search(
         "pages": (int(total) + per_page - 1) // per_page if total else 0,
         "results": results,
     }
+
+
+def search_iter(cfg, *, batch_size: int = 1000, **filters):
+    """
+    Stream every matching row, one batch at a time. No pagination, no
+    fetching the whole result set into Python at once.
+
+    Yields tuples in `COLUMNS` order. Caller is responsible for any
+    formatting (CSV / JSON / etc.).
+
+    Holds the connection lock for the duration of iteration — callers
+    should consume the iterator promptly.
+    """
+    conn = _get_conn(cfg)
+    where_sql, params = _build_where(**filters)
+    cols_sql = ", ".join(COLUMNS)
+
+    with _conn_lock:
+        result = conn.execute(
+            f"SELECT {cols_sql} FROM signins {where_sql} ORDER BY created_at DESC",
+            params,
+        )
+        while True:
+            batch = result.fetchmany(batch_size)
+            if not batch:
+                return
+            for row in batch:
+                yield row
 
 
 def get_index_stats(cfg) -> dict:

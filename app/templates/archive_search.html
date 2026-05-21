@@ -92,12 +92,19 @@
 
 {% if results is not none %}
   {% if results.results %}
-  <div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
     <span class="text-muted small">
       <strong>{{ "{:,}".format(results.total) }}</strong> matches
       &middot; showing page {{ results.page }} of {{ results.pages }}
       <span class="ms-2 text-muted">({{ "%.2f s" | format(elapsed) }})</span>
     </span>
+    {% set csv_qs = '' %}
+    {% set ns_csv = namespace(qs='') %}
+    {% for k, v in request.args.items() %}{% if k not in ('page', 'per_page') %}{% set ns_csv.qs = ns_csv.qs ~ '&' ~ k ~ '=' ~ v %}{% endif %}{% endfor %}
+    <a href="{{ url_for('pages.archive_search_csv') }}?_={{ ns_csv.qs }}"
+       class="btn btn-sm btn-outline-success">
+      <i class="bi bi-download me-1"></i>Download CSV ({{ "{:,}".format(results.total) }} rows)
+    </a>
   </div>
 
   <div class="card shadow-sm border-0">

@@ -7,6 +7,7 @@ from datetime import datetime
 
 from flask import (
     Blueprint,
+    Response,
     current_app,
     redirect,
     render_template,
@@ -17,8 +18,10 @@ from flask import (
 
 logger = logging.getLogger(__name__)
 
+from .archive_index import COLUMNS as ARCHIVE_INDEX_COLUMNS
 from .archive_index import get_index_stats as get_archive_index_stats
 from .archive_index import search as search_archive_index
+from .archive_index import search_iter as search_archive_index_iter
 from .archive_service import (
     get_archive_status,
     get_archived_day_record,
@@ -286,6 +289,84 @@ def archive_search():
         signin_type=signin_type, error_code=error_code_str,
         date_from_str=date_from_str, date_to_str=date_to_str,
         per_page=per_page,
+    )
+
+
+@bp.route("/admin/archive/search.csv")
+@login_required
+def archive_search_csv():
+    """Stream the current search as CSV. Same query-param surface as the HTML page."""
+    cfg = current_app.config["APP_CONFIG"]
+
+    q = request.args.get("q", "").strip() or None
+    upn = request.args.get("upn", "").strip() or None
+    ip = request.args.get("ip", "").strip() or None
+    app_name = request.args.get("app", "").strip() or None
+    country = request.args.get("country", "").strip() or None
+    signin_type = request.args.get("type", "").strip() or None
+    date_from_str = request.args.get("from", "").strip()
+    date_to_str = request.args.get("to", "").strip()
+    error_code_str = request.args.get("error_code", "").strip()
+
+    def _parse_date(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    date_from = _parse_date(date_from_str)
+    date_to = _parse_date(date_to_str)
+    error_code = int(error_code_str) if error_code_str.isdigit() else None
+
+    import csv as _csv
+    import io as _io
+
+    def _stream():
+        buf = _io.StringIO()
+        writer = _csv.writer(buf)
+        writer.writerow(ARCHIVE_INDEX_COLUMNS)
+        yield buf.getvalue()
+        buf.seek(0)
+        buf.truncate()
+
+        for row in search_archive_index_iter(
+            cfg,
+            keyword=q,
+            user_principal_name=upn,
+            ip_address=ip,
+            app_display_name=app_name,
+            country=country,
+            error_code=error_code,
+            signin_event_type=signin_type,
+            date_from=date_from,
+            date_to=date_to,
+        ):
+            writer.writerow(row)
+            # Flush every ~64 KB to keep memory flat while still amortizing
+            # the per-row chunk overhead.
+            if buf.tell() > 65536:
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate()
+        if buf.tell():
+            yield buf.getvalue()
+
+    fname_parts = ["archive"]
+    if date_from_str:
+        fname_parts.append(date_from_str)
+    if date_to_str:
+        fname_parts.append(date_to_str)
+    if upn:
+        fname_parts.append("upn-" + upn.replace("@", "-at-"))
+    filename = "_".join(fname_parts) + ".csv"
+
+    return Response(
+        _stream(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

@@ -148,6 +148,38 @@ def test_index_day_skips_rows_without_created_at(cfg):
     assert n == 1
 
 
+def test_search_iter_yields_all_rows_unpaginated(cfg):
+    day = dt.date(2026, 4, 9)
+    rows = [_row(f"r{i:04d}", day.isoformat(), i % 24) for i in range(2500)]
+    archive_index.index_day(cfg, day, rows)
+
+    yielded = list(archive_index.search_iter(cfg, batch_size=500))
+    assert len(yielded) == 2500
+    # Returned as tuples in COLUMNS order
+    assert len(yielded[0]) == len(archive_index.COLUMNS)
+
+
+def test_search_iter_respects_filters(cfg):
+    day = dt.date(2026, 4, 10)
+    rows = [
+        _row("a", day.isoformat(), 1, user_principal_name="alice@x.com"),
+        _row("b", day.isoformat(), 2, user_principal_name="bob@x.com"),
+        _row("c", day.isoformat(), 3, user_principal_name="alice@y.com"),
+    ]
+    archive_index.index_day(cfg, day, rows)
+
+    yielded = list(archive_index.search_iter(cfg, user_principal_name="alice"))
+    assert len(yielded) == 2
+    # IDs are in column 0
+    assert {r[0] for r in yielded} == {"a", "c"}
+
+
+def test_search_iter_empty_result(cfg):
+    archive_index.index_day(cfg, dt.date(2026, 4, 11), [_row("a", "2026-04-11", 1)])
+    yielded = list(archive_index.search_iter(cfg, user_principal_name="nobody-matches-this"))
+    assert yielded == []
+
+
 def test_index_file_created_on_disk(cfg):
     archive_index.index_day(cfg, dt.date(2026, 4, 8), [_row("a", "2026-04-08", 1)])
     assert os.path.exists(cfg.ARCHIVE_INDEX_PATH)
