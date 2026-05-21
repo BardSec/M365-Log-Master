@@ -153,8 +153,11 @@
     <div class="card-footer bg-white d-flex justify-content-center">
       <nav>
         <ul class="pagination pagination-sm mb-0">
-          {% set qs = '' %}
-          {% for k, v in request.args.items() %}{% if k != 'page' %}{% set qs = qs ~ '&' ~ k ~ '=' ~ v %}{% endif %}{% endfor %}
+          {# Jinja2: {% set %} inside a {% for %} doesn't mutate outer scope.
+             Use a namespace so the loop can accumulate. #}
+          {% set ns = namespace(qs='') %}
+          {% for k, v in request.args.items() %}{% if k != 'page' %}{% set ns.qs = ns.qs ~ '&' ~ k ~ '=' ~ v %}{% endif %}{% endfor %}
+          {% set qs = ns.qs %}
           <li class="page-item {% if results.page <= 1 %}disabled{% endif %}">
             <a class="page-link" href="?page={{ results.page - 1 }}{{ qs }}">Prev</a>
           </li>
