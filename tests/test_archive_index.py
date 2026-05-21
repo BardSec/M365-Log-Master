@@ -106,6 +106,29 @@ def test_search_filters_error_code_and_type(cfg):
     assert only_sp["results"][0]["id"] == "svc"
 
 
+def test_search_result_filter_success_vs_failure(cfg):
+    day = dt.date(2026, 4, 12)
+    rows = [
+        _row("ok1", day.isoformat(), 1, error_code=0),
+        _row("ok2", day.isoformat(), 2, error_code=None),  # NULL counts as success
+        _row("fail1", day.isoformat(), 3, error_code=50126),
+        _row("fail2", day.isoformat(), 4, error_code=50058),
+    ]
+    archive_index.index_day(cfg, day, rows)
+
+    successes = archive_index.search(cfg, result="success")
+    assert successes["total"] == 2
+    assert {r["id"] for r in successes["results"]} == {"ok1", "ok2"}
+
+    failures = archive_index.search(cfg, result="failure")
+    assert failures["total"] == 2
+    assert {r["id"] for r in failures["results"]} == {"fail1", "fail2"}
+
+    # Unrecognized value = no filter
+    all_rows = archive_index.search(cfg, result="bogus")
+    assert all_rows["total"] == 4
+
+
 def test_search_keyword_hits_multiple_columns(cfg):
     day = dt.date(2026, 4, 5)
     # Override the default 'alice@example.com' UPN so the keyword test

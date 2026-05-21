@@ -50,6 +50,14 @@
         <input class="form-control form-control-sm" name="country" value="{{ country or '' }}" placeholder="US">
       </div>
       <div class="col-6 col-md-3 col-lg-2">
+        <label class="form-label small fw-semibold">Result</label>
+        <select class="form-select form-select-sm" name="result">
+          <option value="" {% if not result_filter %}selected{% endif %}>(any)</option>
+          <option value="success" {% if result_filter == 'success' %}selected{% endif %}>Success only</option>
+          <option value="failure" {% if result_filter == 'failure' %}selected{% endif %}>Failures only</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-lg-2">
         <label class="form-label small fw-semibold">Error code</label>
         <input class="form-control form-control-sm" name="error_code" value="{{ error_code or '' }}" placeholder="0">
       </div>

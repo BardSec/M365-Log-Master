@@ -159,11 +159,16 @@ def _build_where(
     app_display_name: str | None = None,
     country: str | None = None,
     error_code: int | None = None,
+    result: str | None = None,
     signin_event_type: str | None = None,
     date_from: dt.date | None = None,
     date_to: dt.date | None = None,
 ) -> tuple[str, list[Any]]:
-    """Build a parameterized WHERE clause from the search filters."""
+    """Build a parameterized WHERE clause from the search filters.
+
+    `result` accepts 'success' (error_code is 0 or NULL), 'failure' (any
+    non-zero error_code), or None / unrecognized for no filter.
+    """
     where: list[str] = []
     params: list[Any] = []
 
@@ -188,6 +193,10 @@ def _build_where(
     if error_code is not None:
         where.append("error_code = ?")
         params.append(error_code)
+    if result == "success":
+        where.append("(error_code = 0 OR error_code IS NULL)")
+    elif result == "failure":
+        where.append("(error_code IS NOT NULL AND error_code != 0)")
     if signin_event_type:
         where.append("signin_event_type = ?")
         params.append(signin_event_type)

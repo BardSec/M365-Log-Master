@@ -227,7 +227,7 @@ def archive_search():
     # No params at all → show empty form
     no_params = all(
         not request.args.get(k)
-        for k in ("q", "upn", "ip", "app", "country", "error_code", "type", "from", "to")
+        for k in ("q", "upn", "ip", "app", "country", "error_code", "result", "type", "from", "to")
     )
 
     q = request.args.get("q", "").strip() or None
@@ -236,6 +236,9 @@ def archive_search():
     app_name = request.args.get("app", "").strip() or None
     country = request.args.get("country", "").strip() or None
     signin_type = request.args.get("type", "").strip() or None
+    result_filter = request.args.get("result", "").strip().lower() or None
+    if result_filter not in ("success", "failure"):
+        result_filter = None
     page = _int_param("page", 1)
     per_page = _int_param("per_page", 50)
     date_from_str = request.args.get("from", "").strip()
@@ -266,6 +269,7 @@ def archive_search():
                 app_display_name=app_name,
                 country=country,
                 error_code=error_code,
+                result=result_filter,
                 signin_event_type=signin_type,
                 date_from=date_from,
                 date_to=date_to,
@@ -287,6 +291,7 @@ def archive_search():
         elapsed=elapsed,
         q=q, upn=upn, ip=ip, app=app_name, country=country,
         signin_type=signin_type, error_code=error_code_str,
+        result_filter=result_filter,
         date_from_str=date_from_str, date_to_str=date_to_str,
         per_page=per_page,
     )
@@ -307,6 +312,9 @@ def archive_search_csv():
     date_from_str = request.args.get("from", "").strip()
     date_to_str = request.args.get("to", "").strip()
     error_code_str = request.args.get("error_code", "").strip()
+    result_filter = request.args.get("result", "").strip().lower() or None
+    if result_filter not in ("success", "failure"):
+        result_filter = None
 
     def _parse_date(s):
         try:
@@ -337,6 +345,7 @@ def archive_search_csv():
             app_display_name=app_name,
             country=country,
             error_code=error_code,
+            result=result_filter,
             signin_event_type=signin_type,
             date_from=date_from,
             date_to=date_to,
